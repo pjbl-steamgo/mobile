@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'register_screen.dart'; // Memastikan rute ke halaman register terhubung
+import 'register_screen.dart';
+import 'main_screen.dart';
 
 class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
@@ -297,9 +298,14 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
             child: ElevatedButton(
               onPressed: () {
                 if (_formKey.currentState!.validate()) {
-                  // Jika validasi sukses, jalankan proses login ke back-end
-                  print('Identifier: ${_identifierController.text}');
-                  print('Password: ${_passwordController.text}');
+                  Navigator.pushReplacement(
+                    context,
+                    PageRouteBuilder(
+                      pageBuilder: (context, animation1, animation2) => MainScreen(), // <-- HAPUS KATA 'const' DI SINI
+                      transitionDuration: Duration.zero,
+                      reverseTransitionDuration: Duration.zero,
+                    ),
+                  );
                 }
               },
               style: ElevatedButton.styleFrom(
