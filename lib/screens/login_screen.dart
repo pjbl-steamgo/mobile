@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'dart:convert'; // Untuk encode/decode JSON
+import 'package:http/http.dart' as http; // Untuk panggil API
+import 'package:shared_preferences/shared_preferences.dart'; // Untuk simpan sesi user
+
 import 'register_screen.dart';
 import 'main_screen.dart';
 
@@ -16,14 +20,13 @@ class LoginScreen extends StatelessWidget {
             children: [
               
               // ==========================================
-              // HEADER BANNER & LOGO MASUK (PIXEL PERFECT)
+              // HEADER BANNER & LOGO MASUK
               // ==========================================
               SizedBox(
                 height: 280,
                 width: double.infinity,
                 child: Stack(
                   children: [
-                    // 1. DISPLAY KOTAK REGISTER
                     Container(
                       height: 220, 
                       width: double.infinity,
@@ -35,10 +38,8 @@ class LoginScreen extends StatelessWidget {
                         ),
                       ),
                     ),
-                    
-                    // 2. DISPLAY BULAT REGISTER (UKURAN SAMA PERSIS DENGAN LOGIN)
                     Positioned(
-                      top: 160, // Mengunci posisi lingkaran tepat di tengah garis bawah banner
+                      top: 160,
                       left: 0,
                       right: 0,
                       child: Center(
@@ -70,7 +71,7 @@ class LoginScreen extends StatelessWidget {
               const SizedBox(height: 32),
 
               // ==========================================
-              // TATA LETAK TAB NAVIGASI (TANPA ANIMASI)
+              // TATA LETAK TAB NAVIGASI
               // ==========================================
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -82,7 +83,6 @@ class LoginScreen extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      // Tab Masuk (Aktif)
                       Expanded(
                         child: Container(
                           padding: const EdgeInsets.only(bottom: 12),
@@ -98,8 +98,6 @@ class LoginScreen extends StatelessWidget {
                           ),
                         ),
                       ),
-                      
-                      // Tab Daftar (Tidak Aktif - Berpindah Halaman Instan)
                       Expanded(
                         child: InkWell(
                           onTap: () {
@@ -160,7 +158,102 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _identifierController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  
   bool _isPasswordVisible = false;
+  bool _isLoading = false; // <-- Variabel baru untuk status loading
+
+  // FUNGSI UNTUK MEMANGGIL API LOGIN LARAVEL
+  Future<void> _loginProses() async {
+    // Tutup keyboard saat tombol ditekan
+    FocusScope.of(context).unfocus();
+
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() {
+      _isLoading = true; // Nyalakan animasi loading
+    });
+
+    try {
+      /* PENTING TENTANG IP ADDRESS:
+       - Jika pakai Emulator Android: gunakan 10.0.2.2
+       - Jika pakai HP Asli (Fisik) : gunakan IP WiFi laptopmu (contoh: 192.168.1.5)
+      */
+      const String apiUrl = 'http://192.168.1.14:8000/api/login'; 
+
+      final response = await http.post(
+        Uri.parse(apiUrl),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode({
+          'identifier': _identifierController.text.trim(),
+          'password': _passwordController.text,
+        }),
+      );
+
+      final responseData = jsonDecode(response.body);
+
+      if (response.statusCode == 200 && responseData['success'] == true) {
+        // 1. Jika Login Sukses: Simpan data ke SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('id_user', responseData['data']['id_user']);
+        await prefs.setString('username', responseData['data']['username']);
+        await prefs.setString('no_hp', responseData['data']['no_hp']);
+        await prefs.setString('email', responseData['data']['email']);
+        await prefs.setBool('is_logged_in', true);
+
+        // 2. Tampilkan pesan sukses
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(responseData['message']),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+
+          // 3. Pindah ke Main Screen
+          Navigator.pushReplacement(
+            context,
+            PageRouteBuilder(
+              pageBuilder: (context, animation1, animation2) => MainScreen(),
+              transitionDuration: Duration.zero,
+              reverseTransitionDuration: Duration.zero,
+            ),
+          );
+        }
+      } else {
+        // Jika Login Gagal (Password salah / akun tidak ada)
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(responseData['message'] ?? 'Login gagal. Periksa kembali data Anda.'),
+              backgroundColor: Colors.redAccent,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // Jika server Laravel mati atau IP salah
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Gagal terhubung ke server. Pastikan server lokal berjalan.'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false; // Matikan animasi loading
+        });
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -275,9 +368,7 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-              onPressed: () {
-                // TODO: Tambahkan navigasi atau aksi aksi lupa password di sini
-              },
+              onPressed: () {},
               style: TextButton.styleFrom(
                 padding: EdgeInsets.zero,
                 minimumSize: Size.zero,
@@ -291,32 +382,30 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
           ),
           const SizedBox(height: 32),
           
-          // Tombol Utama Masuk
+          // Tombol Utama Masuk (Dengan Animasi Loading)
           SizedBox(
             width: double.infinity,
             height: 52,
             child: ElevatedButton(
-              onPressed: () {
-                if (_formKey.currentState!.validate()) {
-                  Navigator.pushReplacement(
-                    context,
-                    PageRouteBuilder(
-                      pageBuilder: (context, animation1, animation2) => MainScreen(), // <-- HAPUS KATA 'const' DI SINI
-                      transitionDuration: Duration.zero,
-                      reverseTransitionDuration: Duration.zero,
-                    ),
-                  );
-                }
-              },
+              onPressed: _isLoading ? null : _loginProses, // Kunci tombol saat loading
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blueAccent, 
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), 
                 elevation: 0,
               ),
-              child: const Text(
-                'Masuk', 
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
+              child: _isLoading
+                  ? const SizedBox(
+                      height: 24,
+                      width: 24,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 3,
+                      ),
+                    )
+                  : const Text(
+                      'Masuk', 
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                    ),
             ),
           ),
         ],
