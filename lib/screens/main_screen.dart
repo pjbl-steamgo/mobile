@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'home_screen.dart'; // Menghubungkan ke halaman beranda
+import 'service_screen.dart';
+import 'order_screen.dart';
+import 'profile_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -14,9 +17,9 @@ class _MainScreenState extends State<MainScreen> {
   // Daftar halaman yang sejajar dengan urutan menu di Navbar
   final List<Widget> _pages = [
     const HomeScreen(), // Index 0: Beranda
-    const Center(child: Text('Halaman Layanan', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)))), // Index 1: Layanan
-    const Center(child: Text('Halaman Pesanan', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)))), // Index 2: Pesanan
-    const Center(child: Text('Halaman Profil', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)))),  // Index 3: Profil
+    const ServiceScreen(),
+    const OrderScreen(),
+    const ProfileScreen(),
   ];
 
   @override

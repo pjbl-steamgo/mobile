@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'chat_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -6,226 +7,437 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC), // Latar belakang abu-abu sangat muda
+      backgroundColor: const Color(0xFFF0F4FF),
+      // ══════════════════════════════════════════
+      // APP BAR STICKY (tidak hilang saat scroll)
+      // ══════════════════════════════════════════
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(80),
+        child: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF3B5BDB), Color(0xFF4C6EF5)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.only(
+              bottomLeft: Radius.circular(28),
+              bottomRight: Radius.circular(28),
+            ),
+          ),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Avatar
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withOpacity(0.25),
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                    child: const Icon(Icons.person_rounded,
+                        color: Colors.white, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  // Greeting
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Selamat datang kembali,',
+                          style: TextStyle(
+                              color: Colors.white.withOpacity(0.8),
+                              fontSize: 12),
+                        ),
+                        const SizedBox(height: 2),
+                        const Text(
+                          'Raditya Hafiz 👋',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Tombol Chat
+                  GestureDetector(
+                    onTap: () => Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => const ChatScreen())),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.18),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.chat_bubble_outline_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                  // Tombol Notif
+                  Stack(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.18),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.notifications_none_rounded,
+                          color: Colors.white,
+                          size: 22,
+                        ),
+                      ),
+                      Positioned(
+                        top: 8,
+                        right: 9,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: Colors.redAccent,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                                color: const Color(0xFF4C6EF5), width: 1.5),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            
-            // ==========================================
-            // HEADER UTAMA DENGAN EFEK GANTUNG
-            // ==========================================
-            Stack(
-              clipBehavior: Clip.none, 
-              children: [
-                // 1. KOTAK BANNER BIRU UTAMA
-                Container(
-                  width: double.infinity,
-                  height: 225, 
-                  decoration: const BoxDecoration(
-                    color: Colors.blueAccent,
-                    borderRadius: BorderRadius.only(
-                      bottomLeft: Radius.circular(24),
-                      bottomRight: Radius.circular(24),
+
+            const SizedBox(height: 16),
+
+            // ══════════════════════════════════════════
+            // QUEUE CARD (terpisah, tidak overlap)
+            // ══════════════════════════════════════════
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.07),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
                     ),
-                  ),
-                  child: SafeArea(
-                    bottom: false,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    // Nomor antrian
+                    const Text(
+                      '07',
+                      style: TextStyle(
+                        fontSize: 38,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF3B5BDB),
+                        height: 1,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    // Detail
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // BARIS 1: Foto Profil, Detail Lokasi & Tombol Notifikasi
-                          Row(
-                            children: [
-                              Container(
-                                width: 42,
-                                height: 42,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(color: Colors.white, width: 2),
-                                  image: const DecorationImage(
-                                    image: AssetImage('assets/images/logo.png'), 
-                                    fit: BoxFit.cover,
-                                  ),
+                          RichText(
+                            overflow: TextOverflow.ellipsis,
+                            text: const TextSpan(
+                              style: TextStyle(fontSize: 12),
+                              children: [
+                                TextSpan(
+                                  text: 'Antrian Aktif',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF1A1A2E)),
                                 ),
-                              ),
-                              const SizedBox(width: 12),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Lokasi Anda',
-                                    style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 11, fontWeight: FontWeight.w500),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Row(
-                                    children: [
-                                      const Text(
-                                        'Bogor, Indonesia',
-                                        style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
-                                      ),
-                                      const SizedBox(width: 2),
-                                      Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white.withOpacity(0.8), size: 16),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                              const Spacer(),
-                              Stack(
-                                children: [
-                                  Container(
-                                    width: 40,
-                                    height: 40,
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withOpacity(0.15),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: const Icon(Icons.notifications_none_rounded, color: Colors.white, size: 22),
-                                  ),
-                                  Positioned(
-                                    top: 10,
-                                    right: 11,
-                                    child: Container(
-                                      width: 8,
-                                      height: 8,
-                                      decoration: const BoxDecoration(
-                                        color: Colors.redAccent,
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                                TextSpan(
+                                  text: '  •  ',
+                                  style: TextStyle(color: Color(0xFF4C6EF5)),
+                                ),
+                                TextSpan(
+                                  text: 'Snow Wash',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF4C6EF5)),
+                                ),
+                                TextSpan(
+                                  text: '  •  ',
+                                  style: TextStyle(color: Color(0xFF4C6EF5)),
+                                ),
+                                TextSpan(
+                                  text: 'Honda Beat',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF1A1A2E)),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Row(
+                            children: const [
+                              Icon(Icons.access_time_rounded,
+                                  size: 13, color: Color(0xFF94A3B8)),
+                              SizedBox(width: 4),
+                              Text(
+                                'Estimasi 25 menit lagi',
+                                style: TextStyle(
+                                    fontSize: 11, color: Color(0xFF94A3B8)),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 24),
-                          
-                          // BARIS 2: Teks Sapaan
+                        ],
+                      ),
+                    ),
+                    // Badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE8F5E9),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Text(
+                        'Dalam antrean',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF2E7D32),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // ══════════════════════════════════════════
+            // PILIH LAYANAN
+            // ══════════════════════════════════════════
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Pilih Layanan',
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1A1A2E))),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      _buildServiceCard(
+                        iconData: Icons.water_drop_rounded,
+                        iconColor: const Color(0xFF3B5BDB),
+                        iconBg: const Color(0xFFE3F2FD),
+                        label: 'Steam Biasa',
+                        price: 'Rp 20.000',
+                      ),
+                      const SizedBox(width: 10),
+                      _buildServiceCard(
+                        iconData: Icons.ac_unit_rounded,
+                        iconColor: const Color(0xFF00B4D8),
+                        iconBg: const Color(0xFFE0F7FA),
+                        label: 'Snow Wash',
+                        price: 'Rp 30.000',
+                      ),
+                      const SizedBox(width: 10),
+                      _buildServiceCard(
+                        iconData: Icons.auto_awesome_rounded,
+                        iconColor: const Color(0xFFF59F00),
+                        iconBg: const Color(0xFFFFF3CD),
+                        label: 'Detailing',
+                        price: 'Rp 120.000',
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            // ══════════════════════════════════════════
+            // PROMO BANNER
+            // ══════════════════════════════════════════
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFF9A825), Color(0xFFFB8C00)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           const Text(
-                            'Halo, Faza!',
+                            'Snow Wash Gratis\nUntuk Member Baru!',
                             style: TextStyle(
                               color: Colors.white,
-                              fontSize: 24,
+                              fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              letterSpacing: 0.2,
+                              height: 1.3,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Berlaku s/d 28 Feb 2025',
+                            style: TextStyle(
+                                color: Colors.white.withOpacity(0.85),
+                                fontSize: 11),
+                          ),
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Text(
+                              'Klaim Sekarang',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFE65100),
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ),
+                    const Text('🎁', style: TextStyle(fontSize: 48)),
+                  ],
                 ),
-
-                // 2. KARTU SALDO PUTIH OVERLAP
-                Positioned(
-                  bottom: -60, 
-                  left: 24,
-                  right: 24,
-                  child: Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.06),
-                          blurRadius: 15,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          flex: 3,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  const Icon(Icons.account_balance_wallet_rounded, color: Colors.blueAccent, size: 15),
-                                  const SizedBox(width: 6),
-                                  const Text(
-                                    'Saldo SteamGo',
-                                    style: TextStyle(color: Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.w600),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              const Text(
-                                'Rp 125.000',
-                                style: TextStyle(color: Color(0xFF1E293B), fontSize: 20, fontWeight: FontWeight.bold),
-                              ),
-                              const SizedBox(height: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: Colors.orange.shade50,
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.star_rounded, color: Colors.orange.shade600, size: 14),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      '1.250 Poin',
-                                      style: TextStyle(color: Colors.orange.shade700, fontSize: 11, fontWeight: FontWeight.bold),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          height: 55,
-                          width: 1,
-                          color: const Color(0xFFF1F5F9),
-                          margin: const EdgeInsets.symmetric(horizontal: 8),
-                        ),
-                        Expanded(
-                          flex: 2,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              _buildCardAction(Icons.add_box_rounded, 'Top Up'),
-                              _buildCardAction(Icons.receipt_long_rounded, 'Riwayat'),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
 
-            const SizedBox(height: 84),
+            const SizedBox(height: 20),
 
-            // ==========================================
-            // KONTEN LAYANAN KAMI
-            // ==========================================
+            // ══════════════════════════════════════════
+            // JADWAL HARI INI
+            // ══════════════════════════════════════════
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Layanan Kami',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                  const Text('Jadwal Hari Ini',
+                      style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1A1A2E))),
+                  const SizedBox(height: 12),
+
+                  _buildScheduleCard(
+                    time: '08.00 – 09.00',
+                    status: 'Selesai',
+                    state: _SlotState.done,
+                    chips: const [
+                      _SlotChip(icon: Icons.two_wheeler_rounded, label: '4 Slot - Penuh'),
+                      _SlotChip(icon: Icons.directions_car_rounded, label: '1/2 Slot Terisi'),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildServiceItem(Icons.local_car_wash_rounded, 'Cuci\nReguler'),
-                      _buildServiceItem(Icons.workspace_premium_rounded, 'Premium\nWash'),
-                      _buildServiceItem(Icons.content_cut_rounded, 'Pangkas\nAntrean'),
-                      _buildServiceItem(Icons.calendar_month_rounded, 'Booking\nCuci'),
+                  const SizedBox(height: 8),
+                  _buildScheduleCard(
+                    time: '09.00 – 10.00',
+                    status: 'Proses',
+                    state: _SlotState.active,
+                    chips: const [
+                      _SlotChip(icon: Icons.two_wheeler_rounded, label: '4 Slot - Penuh'),
+                      _SlotChip(icon: Icons.directions_car_rounded, label: '2 Slot - Penuh'),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _buildScheduleCard(
+                    time: '10.00 – 11.00',
+                    status: 'Menunggu',
+                    state: _SlotState.waiting,
+                    chips: const [
+                      _SlotChip(icon: Icons.two_wheeler_rounded, label: '3 Slot Terisi'),
+                      _SlotChip(icon: Icons.directions_car_rounded, label: '1 Slot Terisi'),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _buildScheduleCard(
+                    time: '11.00 – 12.00',
+                    status: 'Menunggu',
+                    state: _SlotState.waiting,
+                    chips: const [
+                      _SlotChip(icon: Icons.two_wheeler_rounded, label: '2 Slot Terisi'),
+                      _SlotChip(icon: Icons.directions_car_rounded, label: '1/2 Slot Terisi'),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _buildScheduleCard(
+                    time: '12.00 – 13.00',
+                    status: 'Tersedia',
+                    state: _SlotState.available,
+                    chips: const [
+                      _SlotChip(icon: Icons.two_wheeler_rounded, label: '4 Slot Tersedia'),
+                      _SlotChip(icon: Icons.directions_car_rounded, label: '2 Slot Tersedia'),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _buildScheduleCard(
+                    time: '13.00 – 14.00',
+                    status: 'Tersedia',
+                    state: _SlotState.available,
+                    chips: const [
+                      _SlotChip(icon: Icons.two_wheeler_rounded, label: '4 Slot Tersedia'),
+                      _SlotChip(icon: Icons.directions_car_rounded, label: '2 Slot Tersedia'),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _buildScheduleCard(
+                    time: '14.00 – 15.00',
+                    status: 'Tersedia',
+                    state: _SlotState.available,
+                    chips: const [
+                      _SlotChip(icon: Icons.two_wheeler_rounded, label: '4 Slot Tersedia'),
+                      _SlotChip(icon: Icons.directions_car_rounded, label: '2 Slot Tersedia'),
                     ],
                   ),
                 ],
@@ -233,224 +445,203 @@ class HomeScreen extends StatelessWidget {
             ),
 
             const SizedBox(height: 32),
-
-            // ==========================================
-            // KONTEN PROMO SPESIAL
-            // ==========================================
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Promo Spesial',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
-                      ),
-                      Text(
-                        'Lihat Semua',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.blueAccent.shade400),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  height: 140,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    scrollDirection: Axis.horizontal,
-                    itemCount: 3,
-                    itemBuilder: (context, index) {
-                      return Container(
-                        width: MediaQuery.of(context).size.width * 0.8,
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          color: const Color(0xFFE2E8F0),
-                          image: const DecorationImage(
-                            image: NetworkImage('https://images.unsplash.com/photo-1607860108855-64acf2078ed9?q=80&w=800&auto=format&fit=crop'),
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 32),
-
-            // ==========================================
-            // KONTEN DAFTAR HARI INI (DIUBAH SESUAI REFERENSI)
-            // ==========================================
-            _buildTodaysListSection(),
-            
-            const SizedBox(height: 40),
           ],
         ),
       ),
     );
   }
 
-  // WIDGET BARU: Seksi Daftar Hari Ini
-  Widget _buildTodaysListSection() {
-    // Data List disesuaikan dengan Mockup
-    final List<Map<String, dynamic>> todaysActivities = [
-      {
-        'vehicle': 'Yamaha NMax (F 1234 ABC)',
-        'service': 'Cuci Reguler',
-        'time': '10:30 WIB',
-        'status': 'Sedang Dicuci',
-        'statusColor': Colors.orange.shade700,
-        'statusBg': Colors.orange.shade50,
-        'icon': Icons.two_wheeler_rounded,
-      },
-      {
-        'vehicle': 'Toyota Avanza (B 9876 KKK)',
-        'service': 'Premium Wash',
-        'time': '13:00 WIB',
-        'status': 'Dalam Antrean',
-        'statusColor': Colors.blueAccent,
-        'statusBg': Colors.blue.shade50,
-        'icon': Icons.directions_car_filled_rounded,
-      },
-    ];
+  // ── Service card ──────────────────────────────────────────────────────────
+  Widget _buildServiceCard({
+    required IconData iconData,
+    required Color iconColor,
+    required Color iconBg,
+    required String label,
+    required String price,
+  }) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFE8ECFF)),
+        ),
+        child: Column(
+          children: [
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: iconBg,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(iconData, color: iconColor, size: 22),
+            ),
+            const SizedBox(height: 8),
+            Text(label,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1A1A2E))),
+            const SizedBox(height: 4),
+            const Text('Mulai dari',
+                style: TextStyle(fontSize: 9, color: Color(0xFF94A3B8))),
+            Text(price,
+                style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF3B5BDB))),
+          ],
+        ),
+      ),
+    );
+  }
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  // ── Schedule card ──────────────────────────────────────────────────────────
+  Widget _buildScheduleCard({
+    required String time,
+    required String status,
+    required _SlotState state,
+    required List<_SlotChip> chips,
+  }) {
+    Color bgColor;
+    Color timeColor;
+    Color statusColor;
+    Color chipBg;
+    Color chipTextColor;
+    Widget trailingIcon;
+
+    switch (state) {
+      case _SlotState.done:
+        bgColor = const Color(0xFFF8F9FA);
+        timeColor = const Color(0xFF1A1A2E);
+        statusColor = const Color(0xFF94A3B8);
+        chipBg = const Color(0xFFE2E8F0);
+        chipTextColor = const Color(0xFF64748B);
+        trailingIcon = Container(
+          width: 30, height: 30,
+          decoration: const BoxDecoration(
+              color: Color(0xFFE8F5E9), shape: BoxShape.circle),
+          child: const Icon(Icons.check_rounded,
+              size: 16, color: Color(0xFF2E7D32)),
+        );
+        break;
+      case _SlotState.active:
+        bgColor = const Color(0xFF4C6EF5);
+        timeColor = Colors.white;
+        statusColor = Colors.white70;
+        chipBg = Colors.white.withOpacity(0.25);
+        chipTextColor = Colors.white;
+        trailingIcon = Container(
+          width: 30, height: 30,
+          decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+          child: Icon(Icons.more_horiz_rounded,
+              size: 16, color: Colors.white.withOpacity(0.9)),
+        );
+        break;
+      case _SlotState.waiting:
+        bgColor = Colors.white;
+        timeColor = const Color(0xFF1A1A2E);
+        statusColor = const Color(0xFFF59F00);
+        chipBg = const Color(0xFFFFF3CD);
+        chipTextColor = const Color(0xFF92400E);
+        trailingIcon = Container(
+          width: 30, height: 30,
+          decoration: const BoxDecoration(
+              color: Color(0xFFFFF3CD), shape: BoxShape.circle),
+          child: const Icon(Icons.schedule_rounded,
+              size: 16, color: Color(0xFFF59F00)),
+        );
+        break;
+      case _SlotState.available:
+        bgColor = Colors.white;
+        timeColor = const Color(0xFF1A1A2E);
+        statusColor = const Color(0xFF4CAF50);
+        chipBg = const Color(0xFFE8F5E9);
+        chipTextColor = const Color(0xFF2E7D32);
+        trailingIcon = Container(
+          width: 30, height: 30,
+          decoration: const BoxDecoration(
+              color: Color(0xFFE8F5E9), shape: BoxShape.circle),
+          child: const Icon(Icons.add_rounded,
+              size: 18, color: Color(0xFF2E7D32)),
+        );
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(14),
+        border: state != _SlotState.active
+            ? Border.all(color: const Color(0xFFE9ECEF))
+            : null,
+      ),
+      child: Row(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Daftar Hari Ini',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
-              ),
-              Text(
-                'Lihat Semua',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.blueAccent),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          
-          // List Item Antrean
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(), 
-            padding: EdgeInsets.zero,
-            itemCount: todaysActivities.length,
-            itemBuilder: (context, index) {
-              final item = todaysActivities[index];
-              return Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.grey.shade200), // Border tipis abu-abu
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.02),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(time,
+                        style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: timeColor)),
+                    const SizedBox(width: 6),
+                    Text('| $status',
+                        style: TextStyle(
+                            fontSize: 12, color: statusColor)),
                   ],
                 ),
-                child: Row(
-                  children: [
-                    // PERBAIKAN: Lingkaran Ikon Kendaraan berlatar BIRU SOLID, ikon PUTIH
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: const BoxDecoration(
-                        color: Colors.blueAccent,
-                        shape: BoxShape.circle,
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: chips.map((c) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: chipBg,
+                        borderRadius: BorderRadius.circular(20),
                       ),
-                      child: Icon(item['icon'], color: Colors.white, size: 24),
-                    ),
-                    const SizedBox(width: 14),
-                    
-                    // Detail Teks Informasi
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            item['vehicle'],
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${item['service']} • ${item['time']}',
-                            style: const TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
-                          ),
+                          Icon(c.icon, size: 12, color: chipTextColor),
+                          const SizedBox(width: 4),
+                          Text(c.label,
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  color: chipTextColor,
+                                  fontWeight: FontWeight.w600)),
                         ],
                       ),
-                    ),
-                    
-                    // Badge Status Kerja
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: item['statusBg'],
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        item['status'],
-                        style: TextStyle(
-                          fontSize: 11, 
-                          color: item['statusColor'], 
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
+                    );
+                  }).toList(),
                 ),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCardAction(IconData icon, String label) {
-    return InkWell(
-      onTap: () {},
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: Colors.blueAccent, size: 28),
-          const SizedBox(height: 6),
-          Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF475569))),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildServiceItem(IconData icon, String label) {
-    return Expanded(
-      child: Column(
-        children: [
-          Container(
-            height: 54,
-            width: 54,
-            decoration: BoxDecoration(
-              color: const Color(0xFFEFF6FF), 
-              borderRadius: BorderRadius.circular(16),
+              ],
             ),
-            child: Icon(icon, color: Colors.blueAccent, size: 26),
           ),
-          const SizedBox(height: 10),
-          Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1E293B), height: 1.2)),
+          const SizedBox(width: 10),
+          trailingIcon,
         ],
       ),
     );
   }
+}
+
+enum _SlotState { done, active, waiting, available }
+
+class _SlotChip {
+  final IconData icon;
+  final String label;
+  const _SlotChip({required this.icon, required this.label});
 }
