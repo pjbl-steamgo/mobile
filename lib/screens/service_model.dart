@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 class ServiceModel {
+  final String id; // Sangat berguna saat nanti dilempar ke CreateOrderScreen
   final String name;
   final String description;
   final String price;
@@ -14,6 +15,7 @@ class ServiceModel {
   final String category;
 
   const ServiceModel({
+    required this.id,
     required this.name,
     required this.description,
     required this.price,
@@ -26,118 +28,67 @@ class ServiceModel {
     required this.duration,
     required this.category,
   });
-}
 
-final List<ServiceModel> serviceList = [
-  ServiceModel(
-    name: 'Steam Biasa - Motor',
-    description: 'Cuci body, velg, dan rantai menggunakan steam bertekanan tinggi.',
-    price: 'Rp. 20.000',
-    unit: '/Motor',
-    iconData: Icons.water_drop_rounded,
-    iconColor: const Color(0xFF3B5BDB),
-    iconBg: const Color(0xFFE3F2FD),
-    accentColor: const Color(0xFF3B5BDB),
-    duration: '15 – 20 menit',
-    category: 'Motor',
-    includes: [
-      'Cuci body luar dengan steam bertekanan tinggi',
-      'Pembersihan velg dan ban',
-      'Pembersihan rantai dan gear',
-      'Lap kering seluruh bodi',
-    ],
-  ),
-  ServiceModel(
-    name: 'Snow Wash - Motor',
-    description: 'Snow foam tebal untuk hasil bersih merata, aman untuk cat.',
-    price: 'Rp. 30.000',
-    unit: '/Motor',
-    iconData: Icons.ac_unit_rounded,
-    iconColor: const Color(0xFF00B4D8),
-    iconBg: const Color(0xFFE0F7FA),
-    accentColor: const Color(0xFF00B4D8),
-    duration: '20 – 25 menit',
-    category: 'Motor',
-    includes: [
-      'Aplikasi snow foam tebal ke seluruh bodi',
-      'Pembilasan dengan air bertekanan',
-      'Pembersihan velg dan sela-sela knalpot',
-      'Lap microfiber dan finishing',
-    ],
-  ),
-  ServiceModel(
-    name: 'Detailing - Motor',
-    description: 'Perawatan menyeluruh untuk tampilan motor bersih sempurna.',
-    price: 'Rp. 120.000',
-    unit: '/Motor',
-    iconData: Icons.auto_awesome_rounded,
-    iconColor: const Color(0xFFF59F00),
-    iconBg: const Color(0xFFFFF3CD),
-    accentColor: const Color(0xFFF59F00),
-    duration: '60 – 90 menit',
-    category: 'Motor',
-    includes: [
-      'Snow wash lengkap',
-      'Poles body dan tangki',
-      'Semir ban dan proteksi plastik',
-      'Pembersihan detail celah rangka',
-      'Wax coating untuk kilap tahan lama',
-    ],
-  ),
-  ServiceModel(
-    name: 'Steam Biasa - Mobil',
-    description: 'Cuci body, velg, dan kolong menggunakan steam bertekanan tinggi.',
-    price: 'Rp. 40.000',
-    unit: '/Mobil',
-    iconData: Icons.water_drop_rounded,
-    iconColor: const Color(0xFF3B5BDB),
-    iconBg: const Color(0xFFE3F2FD),
-    accentColor: const Color(0xFF3B5BDB),
-    duration: '25 – 35 menit',
-    category: 'Mobil',
-    includes: [
-      'Cuci eksterior dengan steam bertekanan tinggi',
-      'Pembersihan velg dan ban',
-      'Pembersihan kolong mobil',
-      'Lap kering seluruh eksterior',
-    ],
-  ),
-  ServiceModel(
-    name: 'Snow Wash - Mobil',
-    description: 'Snow foam tebal untuk hasil bersih merata, aman untuk cat.',
-    price: 'Rp. 50.000',
-    unit: '/Mobil',
-    iconData: Icons.ac_unit_rounded,
-    iconColor: const Color(0xFF00B4D8),
-    iconBg: const Color(0xFFE0F7FA),
-    accentColor: const Color(0xFF00B4D8),
-    duration: '30 – 40 menit',
-    category: 'Mobil',
-    includes: [
-      'Aplikasi snow foam tebal ke seluruh eksterior',
-      'Pembilasan dengan air bertekanan',
-      'Pembersihan velg, ban, dan kolong',
-      'Lap microfiber dan finishing eksterior',
-    ],
-  ),
-  ServiceModel(
-    name: 'Detailing - Mobil',
-    description: 'Perawatan menyeluruh untuk tampilan mobil bersih sempurna.',
-    price: 'Rp. 250.000',
-    unit: '/Mobil',
-    iconData: Icons.auto_awesome_rounded,
-    iconColor: const Color(0xFFF59F00),
-    iconBg: const Color(0xFFFFF3CD),
-    accentColor: const Color(0xFFF59F00),
-    duration: '120 – 150 menit',
-    category: 'Mobil',
-    includes: [
-      'Snow wash lengkap eksterior',
-      'Cuci interior: vakum, lap dashboard, kaca',
-      'Poles body dan bumper',
-      'Semir ban dan proteksi karet',
-      'Wax coating eksterior',
-      'Parfum interior gratis',
-    ],
-  ),
-];
+  // Fungsi Penerjemah dari Database Laravel ke Flutter
+  factory ServiceModel.fromJson(Map<String, dynamic> json) {
+    String idLayanan = json['id']?.toString() ?? json['_id']?.toString() ?? '';
+    String nama = json['nama_layanan']?.toString() ?? 'Layanan Cuci';
+    String deskripsi = json['deskripsi']?.toString() ?? 'Deskripsi tidak tersedia.';
+    String hargaRaw = json['harga']?.toString() ?? '0';
+    String kategori = json['kategori']?.toString() ?? 'Motor';
+    
+    // Keamanan dari error Integer
+    String durasiRaw = json['estimasi_waktu']?.toString() ?? json['estimasi']?.toString() ?? '30';
+    String durasiTampil = durasiRaw.toLowerCase().contains('menit') ? durasiRaw : '± $durasiRaw Menit';
+
+    // Parsing array includes (Yang didapat). Jika di DB tidak ada, pakai default.
+    List<String> listIncludes = [];
+    if (json['includes'] != null && json['includes'] is List) {
+      listIncludes = List<String>.from(json['includes']);
+    } else {
+      listIncludes = [
+        'Pencucian eksterior kendaraan',
+        'Pembersihan velg & ban',
+        'Pengeringan dengan microfiber',
+      ];
+    }
+
+    // LOGIKA UI CERDAS: Menentukan Ikon dan Warna berdasarkan nama layanan otomatis
+    IconData iData = Icons.water_drop_rounded;
+    Color iColor = const Color(0xFF3B5BDB);
+    Color iBg = const Color(0xFFE3F2FD);
+    Color aColor = const Color(0xFF3B5BDB);
+
+    String namaLower = nama.toLowerCase();
+    if (namaLower.contains('snow') || namaLower.contains('salju')) {
+      iData = Icons.ac_unit_rounded;
+      iColor = const Color(0xFF00B4D8);
+      iBg = const Color(0xFFE0F7FA);
+      aColor = const Color(0xFF00B4D8);
+    } else if (namaLower.contains('detail') || namaLower.contains('poles')) {
+      iData = Icons.auto_awesome_rounded;
+      iColor = const Color(0xFFF59F00);
+      iBg = const Color(0xFFFFF3CD);
+      aColor = const Color(0xFFF59F00);
+    } else if (kategori.toLowerCase() == 'mobil') {
+      iData = Icons.directions_car_rounded;
+    } else {
+      iData = Icons.two_wheeler_rounded;
+    }
+
+    return ServiceModel(
+      id: idLayanan,
+      name: nama,
+      description: deskripsi,
+      price: 'Rp. $hargaRaw',
+      unit: '/$kategori',
+      iconData: iData,
+      iconColor: iColor,
+      iconBg: iBg,
+      accentColor: aColor,
+      includes: listIncludes,
+      duration: durasiTampil,
+      category: kategori,
+    );
+  }
+}

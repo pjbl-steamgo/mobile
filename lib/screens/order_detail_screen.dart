@@ -1,17 +1,23 @@
 import 'package:flutter/material.dart';
-import 'chat_screen.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'chat_screen.dart'; 
 
-class OrderDetailScreen extends StatelessWidget {
+class OrderDetailScreen extends StatefulWidget {
+  final String orderId; 
   final String serviceName;
   final String date;
   final String vehicle;
   final String plateNumber;
-  final String slot;
+  final String slot; 
   final String price;
   final String bookingCode;
+  final String estimasiWaktu; 
 
   const OrderDetailScreen({
     super.key,
+    required this.orderId, 
     required this.serviceName,
     required this.date,
     required this.vehicle,
@@ -19,14 +25,91 @@ class OrderDetailScreen extends StatelessWidget {
     required this.slot,
     required this.price,
     required this.bookingCode,
+    required this.estimasiWaktu,
   });
 
-  static const List<Map<String, dynamic>> _steps = [
-    {'label': 'Booking Dikonfirmasi', 'time': '09:52 WIB', 'done': true,  'active': false, 'subtitle': null},
-    {'label': 'Kendaraan Diterima',   'time': '10:10 WIB', 'done': true,  'active': false, 'subtitle': null},
-    {'label': 'Sedang Dicuci',        'time': '10:15 WIB', 'done': false, 'active': true,  'subtitle': 'Berlangsung...'},
-    {'label': 'Selesai & Siap Diambil','time': 'xx:xx WIB','done': false, 'active': false, 'subtitle': null},
+  @override
+  State<OrderDetailScreen> createState() => _OrderDetailScreenState();
+}
+
+class _OrderDetailScreenState extends State<OrderDetailScreen> with SingleTickerProviderStateMixin {
+  late AnimationController _pulseController;
+  Timer? _pollingTimer;
+  late String _currentStatus;
+
+  final List<String> _timelineSteps = [
+    "Booking",
+    "Booking Dikonfirmasi",
+    "Pembayaran",
+    "Pembayaran Dikonfirmasi",
+    "Sedang dalam antrian",
+    "Sedang dicuci",
+    "Selesai & Siap diambil"
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _currentStatus = widget.slot; 
+    
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
+    )..repeat(reverse: true);
+
+    _startPolling();
+  }
+
+  void _startPolling() {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+      try {
+        final response = await http.get(Uri.parse('http://192.168.1.14:8000/api/orders/status/${widget.orderId}'));
+        
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          if (data['success'] == true && data['status'] != null) {
+            
+            if (_currentStatus != data['status'] && mounted) {
+              setState(() {
+                _currentStatus = data['status'];
+              });
+            }
+
+            if (_currentStatus == 'Selesai' || _currentStatus == 'Batal' || _currentStatus == 'Dihapus') {
+              timer.cancel();
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint("Polling detail error: $e");
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _pollingTimer?.cancel();
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  int get _currentStepIndex {
+    switch (_currentStatus) { 
+      case 'Belum Dikonfirmasi': return 0;
+      case 'Belum Bayar': return 1;
+      case 'Sedang Diverifikasi': return 2;
+      case 'Antri': return 4; 
+      case 'Proses': return 5;
+      case 'Selesai': return 6;
+      default: return 0;
+    }
+  }
+
+  int get _mainStepIndex {
+    if (_currentStatus == 'Selesai') return 2;
+    if (_currentStatus == 'Proses') return 1;
+    return 0; 
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +119,7 @@ class OrderDetailScreen extends StatelessWidget {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: const BackButton(color: Color(0xFF1A1A2E)),
-        title: const Text('Pesanan',
+        title: const Text('Detail Pesanan',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
@@ -47,45 +130,40 @@ class OrderDetailScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // ── NOMOR ANTRIAN ──
-            _buildQueueCard(),
+            _buildAnimatedHeaderCard(),
             const SizedBox(height: 16),
-
-            // ── INFO DETAIL ──
             _buildInfoCard(),
             const SizedBox(height: 16),
-
-            // ── TRACKING ──
             _buildTrackingCard(),
-            const SizedBox(height: 20),
-
-            // ── TOMBOL ──
+            const SizedBox(height: 24),
             Row(
               children: [
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () => _showCancelDialog(context),
-                    child: Container(
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFEBEE),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFEF5350)),
+                if (_currentStepIndex < 4) ...[
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => _showCancelDialog(context),
+                      child: Container(
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFEBEE),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFEF5350)),
+                        ),
+                        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: const [
+                          Icon(Icons.cancel_outlined, size: 18, color: Color(0xFFE53935)),
+                          SizedBox(width: 6),
+                          Text('Batalkan',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFFE53935))),
+                        ]),
                       ),
-                      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: const [
-                        Icon(Icons.cancel_outlined, size: 18, color: Color(0xFFE53935)),
-                        SizedBox(width: 6),
-                        Text('Batalkan Pesanan',
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFFE53935))),
-                      ]),
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
+                  const SizedBox(width: 10),
+                ],
                 Expanded(
+                  flex: _currentStepIndex < 4 ? 1 : 2,
                   child: GestureDetector(
-                    onTap: () => Navigator.push(context,
-                        MaterialPageRoute(builder: (_) => const ChatScreen())),
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatScreen())),
                     child: Container(
                       height: 48,
                       decoration: BoxDecoration(
@@ -96,7 +174,7 @@ class OrderDetailScreen extends StatelessWidget {
                       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: const [
                         Icon(Icons.chat_bubble_outline_rounded, size: 18, color: Color(0xFF2E7D32)),
                         SizedBox(width: 6),
-                        Text('Chat',
+                        Text('Chat Admin',
                             style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF2E7D32))),
                       ]),
                     ),
@@ -111,39 +189,114 @@ class OrderDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildQueueCard() {
+  Widget _buildAnimatedHeaderCard() {
+    int currentMainStep = _mainStepIndex;
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 28),
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFF1A237E), Color(0xFF42A5F5)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+          colors: [Color(0xFF1A237E), Color(0xFF3B5BDB)],
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(18),
+        boxShadow: [BoxShadow(color: const Color(0xFF3B5BDB).withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 5))],
       ),
       child: Column(
         children: [
-          const Text('NOMOR ANTRIAN ANDA',
-              style: TextStyle(color: Colors.white70, fontSize: 12,
-                  fontWeight: FontWeight.w600, letterSpacing: 2)),
-          const SizedBox(height: 8),
-          const Text('07',
-              style: TextStyle(color: Colors.white, fontSize: 72, fontWeight: FontWeight.bold, height: 1)),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withOpacity(0.3)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Status Cucian', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                  const SizedBox(height: 4),
+                  Text('Kode: ${widget.bookingCode}', style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(color: Colors.black.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
+                child: Text(_currentStatus.toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+              )
+            ],
+          ),
+          const SizedBox(height: 32),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildMainStepNode(0, currentMainStep, Icons.hourglass_bottom_rounded, 'Antri'),
+              _buildMainStepLine(0, currentMainStep),
+              _buildMainStepNode(1, currentMainStep, Icons.local_car_wash_rounded, 'Proses'),
+              _buildMainStepLine(1, currentMainStep),
+              _buildMainStepNode(2, currentMainStep, Icons.check_circle_rounded, 'Selesai'),
+            ],
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMainStepNode(int index, int currentStep, IconData icon, String label) {
+    bool isActive = index == currentStep;
+    bool isDone = index < currentStep;
+
+    Widget circle = Container(
+      width: 46, height: 46,
+      decoration: BoxDecoration(
+        color: isDone ? const Color(0xFF4CAF50) : (isActive ? Colors.white : Colors.white.withOpacity(0.15)),
+        shape: BoxShape.circle,
+        boxShadow: isActive ? [BoxShadow(color: Colors.white.withOpacity(0.4), blurRadius: 12, spreadRadius: 2)] : [],
+      ),
+      child: Icon(
+        isDone ? Icons.check_rounded : icon,
+        color: isDone ? Colors.white : (isActive ? const Color(0xFF3B5BDB) : Colors.white54),
+        size: 22,
+      ),
+    );
+
+    if (isActive) {
+      circle = AnimatedBuilder(
+        animation: _pulseController,
+        builder: (context, child) {
+          return Transform.scale(scale: 1.0 + (_pulseController.value * 0.1), child: child);
+        },
+        child: circle,
+      );
+    }
+
+    return SizedBox(
+      width: 60,
+      child: Column(
+        children: [
+          circle,
+          const SizedBox(height: 10),
+          Text(label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: isDone || isActive ? Colors.white : Colors.white54,
+              fontSize: 12,
+              fontWeight: isDone || isActive ? FontWeight.bold : FontWeight.w500,
             ),
-            child: const Text('Antrian Sebelum Anda\n2 antrian',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600, height: 1.5)),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildMainStepLine(int index, int currentStep) {
+    bool isDone = index < currentStep;
+    return Expanded(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 500),
+        margin: const EdgeInsets.only(top: 22, left: 4, right: 4), 
+        height: 3,
+        decoration: BoxDecoration(
+          color: isDone ? const Color(0xFF4CAF50) : Colors.white.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(2)
+        ),
       ),
     );
   }
@@ -151,41 +304,45 @@ class OrderDetailScreen extends StatelessWidget {
   Widget _buildInfoCard() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.white, borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE9ECEF)),
       ),
       child: Column(
         children: [
-          _row('Layanan', serviceName),
-          _div(),
-          _row('Tanggal', '$date, $slot'),
-          _div(),
-          _row('Kendaraan', vehicle),
-          _div(),
-          _row('Estimasi', '-25 Menit', valueColor: const Color(0xFF3B5BDB)),
-          _div(),
-          _row('Pembayaran', 'Transfer Bank'),
-          _div(),
-          _row('Total', price, valueColor: const Color(0xFF3B5BDB), bold: true, fontSize: 15),
+          _row('Layanan', widget.serviceName, bold: true), _div(),
+          _row('Tanggal', widget.date), _div(),
+          _row('Kendaraan', '${widget.vehicle} (${widget.plateNumber})'), _div(),
+          
+          // PERBAIKAN MUTLAK: Teks Estimasi murni mengambil dari database tanpa diubah
+          _row('Estimasi', widget.estimasiWaktu, valueColor: const Color(0xFF3B5BDB)), _div(),
+          
+          _row('Pembayaran', 'QRIS'), _div(),
+          _row('Total', widget.price, valueColor: const Color(0xFF3B5BDB), bold: true, fontSize: 15),
         ],
       ),
     );
   }
 
-  Widget _row(String label, String value,
-      {Color? valueColor, bool bold = false, double fontSize = 13}) {
+  Widget _row(String label, String value, {Color? valueColor, bool bold = false, double fontSize = 13}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8))),
-          const Spacer(),
-          Text(value,
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
               style: TextStyle(
-                  fontSize: fontSize,
-                  fontWeight: bold ? FontWeight.bold : FontWeight.w600,
-                  color: valueColor ?? const Color(0xFF1A1A2E))),
+                fontSize: fontSize, 
+                fontWeight: bold ? FontWeight.bold : FontWeight.w600, 
+                color: valueColor ?? const Color(0xFF1A1A2E)
+              )
+            ),
+          ),
         ],
       ),
     );
@@ -198,22 +355,32 @@ class OrderDetailScreen extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.white, borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFFE9ECEF)),
       ),
       child: Column(
-        children: _steps.asMap().entries.map((e) {
-          return _buildStep(e.value, e.key == _steps.length - 1);
-        }).toList(),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(bottom: 16, left: 4),
+            child: Text('Riwayat Status', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
+          ),
+          ...List.generate(_timelineSteps.length, (index) {
+            bool isLast = index == _timelineSteps.length - 1;
+            int activeStep = _currentStepIndex;
+            
+            bool isCompleted = index < activeStep || (activeStep == 6 && index == 6);
+            bool isActive = index == activeStep;
+
+            return _buildStep(_timelineSteps[index], isCompleted, isActive, isLast);
+          }),
+        ],
       ),
     );
   }
 
-  Widget _buildStep(Map<String, dynamic> step, bool isLast) {
-    final bool done = step['done'] as bool;
-    final bool active = step['active'] as bool;
-    final String? subtitle = step['subtitle'] as String?;
+  Widget _buildStep(String label, bool done, bool active, bool isLast) {
+    bool isFinalStep = label == "Selesai & Siap diambil";
 
     final Color circleColor = done
         ? const Color(0xFF4CAF50)
@@ -224,11 +391,8 @@ class OrderDetailScreen extends StatelessWidget {
     final Widget circleChild = done
         ? const Icon(Icons.check_rounded, color: Colors.white, size: 14)
         : active
-            ? const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 14)
-            : Text(
-                '${_steps.indexWhere((s) => s['label'] == step['label']) + 1}',
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF94A3B8)),
-              );
+            ? const Center(child: CircleAvatar(radius: 4, backgroundColor: Colors.white))
+            : const SizedBox(); 
 
     return IntrinsicHeight(
       child: Row(
@@ -237,43 +401,40 @@ class OrderDetailScreen extends StatelessWidget {
           Column(
             children: [
               Container(
-                width: 28, height: 28,
-                decoration: BoxDecoration(color: circleColor, shape: BoxShape.circle),
+                width: 24, height: 24,
+                decoration: BoxDecoration(
+                  color: circleColor, 
+                  shape: BoxShape.circle,
+                  border: (active && !done) ? Border.all(color: const Color(0xFFE0E7FF), width: 4) : null,
+                ),
                 child: Center(child: circleChild),
               ),
               if (!isLast)
                 Expanded(
-                  child: Container(width: 2,
-                      color: done ? const Color(0xFF4CAF50) : const Color(0xFFE2E8F0)),
+                  child: Container(
+                    width: 2,
+                    color: done ? const Color(0xFF4CAF50) : const Color(0xFFE2E8F0)
+                  ),
                 ),
             ],
           ),
           const SizedBox(width: 14),
           Expanded(
             child: Padding(
-              padding: EdgeInsets.only(bottom: isLast ? 0 : 20),
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 22),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(step['label'] as String,
+                  Text(label,
                       style: TextStyle(
                           fontSize: 13,
-                          fontWeight: FontWeight.bold,
+                          fontWeight: (done || active) ? FontWeight.bold : FontWeight.w500,
                           color: (done || active) ? const Color(0xFF1A1A2E) : const Color(0xFF94A3B8))),
-                  const SizedBox(height: 3),
-                  Row(
-                    children: [
-                      Text(step['time'] as String,
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: done ? const Color(0xFF3B5BDB) : const Color(0xFF94A3B8))),
-                      if (subtitle != null) ...[
-                        const Text('  •  ', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
-                        Text(subtitle,
-                            style: const TextStyle(fontSize: 12, color: Color(0xFF3B5BDB), fontWeight: FontWeight.w500)),
-                      ],
-                    ],
-                  ),
+                  
+                  if (active && !isFinalStep) ...[
+                    const SizedBox(height: 4),
+                    const Text('Berlangsung...', style: TextStyle(fontSize: 11, color: Color(0xFF3B5BDB), fontWeight: FontWeight.w600)),
+                  ]
                 ],
               ),
             ),
@@ -288,22 +449,16 @@ class OrderDetailScreen extends StatelessWidget {
       context: context,
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Batalkan Pesanan?',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
-        content: const Text('Pesanan yang sudah dibatalkan tidak dapat dikembalikan.',
-            style: TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+        title: const Text('Batalkan Pesanan?', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
+        content: const Text('Pesanan yang sudah dibatalkan tidak dapat dikembalikan.', style: TextStyle(fontSize: 13, color: Color(0xFF64748B))),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Kembali', style: TextStyle(color: Color(0xFF64748B))),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Kembali', style: TextStyle(color: Color(0xFF64748B)))),
           TextButton(
             onPressed: () {
               Navigator.pop(context);
               Navigator.pop(context);
             },
-            child: const Text('Batalkan',
-                style: TextStyle(color: Color(0xFFE53935), fontWeight: FontWeight.bold)),
+            child: const Text('Batalkan', style: TextStyle(color: Color(0xFFE53935), fontWeight: FontWeight.bold)),
           ),
         ],
       ),

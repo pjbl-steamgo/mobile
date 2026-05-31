@@ -14,13 +14,24 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
 
-  // Daftar halaman yang sejajar dengan urutan menu di Navbar
-  final List<Widget> _pages = [
-    const HomeScreen(), // Index 0: Beranda
-    const ServiceScreen(),
-    const OrderScreen(),
-    const ProfileScreen(),
-  ];
+  // Menggunakan 'get' agar setState bisa dipanggil dengan aman tanpa error initializer
+  List<Widget> get _pages => [
+        HomeScreen(
+          onSeeAllOrders: () {
+            setState(() {
+              _selectedIndex = 2; // 2 adalah nomor urut tab Pesanan
+            });
+          },
+          onSeeAllServices: () {
+            setState(() {
+              _selectedIndex = 1; // 1 adalah nomor urut tab Layanan
+            });
+          },
+        ),
+        const ServiceScreen(),
+        const OrderScreen(),
+        const ProfileScreen(),
+      ];
 
   @override
   Widget build(BuildContext context) {

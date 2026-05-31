@@ -299,7 +299,7 @@ class ServiceDetailScreen extends StatelessWidget {
           child: _buildInfoChip(
             icon: Icons.sell_rounded,
             label: 'Harga',
-            value: '${service.price} ${service.unit}',
+            value: service.price,
             color: service.accentColor,
           ),
         ),
@@ -381,7 +381,7 @@ class ServiceDetailScreen extends StatelessWidget {
             height: 3,
             width: 32,
             decoration: BoxDecoration(
-              color: const Color(0xFF3B5BDB),
+              color: service.accentColor, // Ubah agar senada dengan warna layanan
               borderRadius: BorderRadius.circular(4),
             )),
         const SizedBox(height: 12),
@@ -473,10 +473,11 @@ class ServiceDetailScreen extends StatelessWidget {
           // Tombol konfirmasi
           GestureDetector(
             onTap: () {
-              Navigator.pop(context);
+              Navigator.pop(context); // Tutup bottom sheet
+              // Di sini nanti bisa diarahkan ke CreateOrderScreen sambil melempar service.id
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('Pesanan ${service.name} berhasil dibuat!'),
+                  content: Text('Pesanan ${service.name} dipilih!'),
                   backgroundColor: service.accentColor,
                   behavior: SnackBarBehavior.floating,
                   shape: RoundedRectangleBorder(
@@ -493,7 +494,7 @@ class ServiceDetailScreen extends StatelessWidget {
               ),
               child: const Center(
                 child: Text(
-                  'Konfirmasi & Pesan',
+                  'Konfirmasi & Lanjut',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,

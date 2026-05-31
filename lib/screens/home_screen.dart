@@ -1,32 +1,80 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'dart:async'; 
 import 'package:http/http.dart' as http;
+
 import 'chat_screen.dart';
+import 'order_screen.dart';
+import 'order_detail_screen.dart';
+import 'booking_waiting_screen.dart';
+import 'payment_screen.dart';
+import 'payment_waiting_screen.dart';
+import 'service_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final VoidCallback? onSeeAllOrders;
+  final VoidCallback? onSeeAllServices;
+
+  const HomeScreen({
+    super.key, 
+    this.onSeeAllOrders, 
+    this.onSeeAllServices,
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // Variabel untuk profil user
+  // Variabel Profil & Antrian
   String _username = "Memuat...";
   String _userId = "";
-  
-  // Variabel state untuk antrian
   bool _isLoadingOrder = true;
-  Map<String, dynamic>? _activeOrder;
+  List<dynamic> _activeOrders = []; 
+
+  // ── VARIABEL UNTUK JAM OPERASIONAL ──
+  bool _isLoadingJam = true;
+  List<dynamic> _jamOperasional = [];
+
+  // Variabel Auto-Slider
+  late PageController _sliderController;
+  int _currentSliderPage = 0;
+  Timer? _sliderTimer;
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
+
+    // Inisialisasi API Jam Operasional
+    _fetchJamOperasional();
+
+    // Inisialisasi Slider Otomatis
+    _sliderController = PageController(initialPage: 0);
+    _sliderTimer = Timer.periodic(const Duration(seconds: 2), (Timer timer) {
+      if (_currentSliderPage < 2) {
+        _currentSliderPage++;
+      } else {
+        _currentSliderPage = 0;
+      }
+      if (_sliderController.hasClients) {
+        _sliderController.animateToPage(
+          _currentSliderPage,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
   }
 
-  // 1. Fungsi mengambil data user dari memori lokal
+  @override
+  void dispose() {
+    _sliderTimer?.cancel(); 
+    _sliderController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadUserData() async {
     final prefs = await SharedPreferences.getInstance();
     final idUser = prefs.getString('id_user') ?? "";
@@ -38,81 +86,139 @@ class _HomeScreenState extends State<HomeScreen> {
     });
 
     if (idUser.isNotEmpty) {
-      _fetchActiveOrder(idUser);
+      _fetchActiveOrders(idUser);
     } else {
-      setState(() {
-        _isLoadingOrder = false;
-      });
+      setState(() => _isLoadingOrder = false);
     }
   }
 
-  // 2. Fungsi menembak API Laravel untuk pesanan terakhir user
-  Future<void> _fetchActiveOrder(String userId) async {
-    // Sesuaikan dengan IP Laravel kamu saat ini
-    final String apiUrl = 'http://192.168.1.14:8000/api/active-order?user_id=$userId';
+  Future<void> _fetchActiveOrders(String userId) async {
+    final String apiUrl = 'http://192.168.1.14:8000/api/order-history?user_id=$userId';
+    setState(() => _isLoadingOrder = true);
 
     try {
-      final response = await http.get(
-        Uri.parse(apiUrl),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-      );
-
+      final response = await http.get(Uri.parse(apiUrl), headers: {'Accept': 'application/json'});
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
         if (responseData['success'] == true) {
-          setState(() {
-            _activeOrder = responseData['data'];
+          List<dynamic> allOrders = responseData['data'];
+          List<dynamic> active = [];
+
+          for (var order in allOrders) {
+            String status = order['status']?.toString() ?? '';
+            if (!['Selesai', 'Batal', 'Dihapus'].contains(status)) {
+              active.add(order);
+            }
+          }
+
+          active.sort((a, b) {
+            String dateA = a['created_at']?.toString() ?? '';
+            String dateB = b['created_at']?.toString() ?? '';
+            return dateA.compareTo(dateB);
           });
+
+          if (mounted) setState(() => _activeOrders = active);
         }
       }
     } catch (e) {
-      debugPrint("Gagal memuat data antrian: $e");
+      debugPrint("Gagal memuat antrian: $e");
     } finally {
-      setState(() {
-        _isLoadingOrder = false;
-      });
+      if (mounted) setState(() => _isLoadingOrder = false);
     }
+  }
+
+  // ── FUNGSI FETCH API JAM OPERASIONAL ──
+  Future<void> _fetchJamOperasional() async {
+    setState(() => _isLoadingJam = true);
+    try {
+      final response = await http.get(
+        Uri.parse('http://192.168.1.14:8000/api/jam-operasional'),
+        headers: {'Accept': 'application/json'}
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true) {
+          if (mounted) {
+            setState(() {
+              _jamOperasional = data['data'];
+            });
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Gagal memuat jam operasional: $e");
+    } finally {
+      if (mounted) setState(() => _isLoadingJam = false);
+    }
+  }
+
+  Future<void> _handleQueueTap(Map<String, dynamic> order) async {
+    String status = order['status']?.toString() ?? 'Belum Dikonfirmasi';
+    String orderId = order['_id']?.toString() ?? order['id']?.toString() ?? '';
+    String namaLayanan = order['layanan']?['nama_layanan']?.toString() ?? 'Layanan Cuci';
+    String tanggalTampil = order['tanggal']?.toString() ?? order['created_at']?.toString() ?? '-';
+    String kendaraan = order['kendaraan']?.toString() ?? '-';
+    String platNomor = order['plat_nomor']?.toString() ?? '-';
+    String hargaTampil = 'Rp ${order['total_harga'] ?? 0}';
+    String bookingCode = order['kode_pesanan']?.toString() ?? '-';
+
+    String estimasiLayanan = '± 30 Menit';
+    if (order['layanan'] != null && order['layanan']['estimasi_waktu'] != null) {
+      String estText = order['layanan']['estimasi_waktu'].toString();
+      estimasiLayanan = estText.toLowerCase().contains('menit') ? estText : '± $estText Menit';
+    }
+
+    if (status == 'Belum Dikonfirmasi') {
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => BookingWaitingScreen(
+        orderId: orderId, serviceName: namaLayanan, date: tanggalTampil, vehicle: kendaraan, plateNumber: platNomor, price: hargaTampil, bookingCode: bookingCode,
+      )));
+    } else if (status == 'Belum Bayar') {
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => PaymentScreen(
+        orderId: orderId, serviceName: namaLayanan, date: tanggalTampil, vehicle: kendaraan, plateNumber: platNomor, price: hargaTampil, bookingCode: bookingCode,
+      )));
+    } else if (status == 'Sedang Diverifikasi') {
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => PaymentWaitingScreen(
+        orderId: orderId, serviceName: namaLayanan, date: tanggalTampil, vehicle: kendaraan, plateNumber: platNomor, price: hargaTampil, bookingCode: bookingCode,
+      )));
+    } else {
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => OrderDetailScreen(
+        orderId: orderId, serviceName: namaLayanan, date: tanggalTampil, vehicle: kendaraan, plateNumber: platNomor, slot: status, price: hargaTampil, bookingCode: bookingCode, estimasiWaktu: estimasiLayanan,
+      )));
+    }
+    
+    _fetchActiveOrders(_userId); 
+  }
+
+  // Fungsi Refresh digabung
+  Future<void> _handleRefresh() async {
+    await _fetchActiveOrders(_userId);
+    await _fetchJamOperasional();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4FF),
-      // ══════════════════════════════════════════
-      // APP BAR (Menampilkan Nama Dinamis)
-      // ══════════════════════════════════════════
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(80),
         child: Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
               colors: [Color(0xFF3B5BDB), Color(0xFF4C6EF5)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+              begin: Alignment.topLeft, end: Alignment.bottomRight,
             ),
-            borderRadius: BorderRadius.only(
-              bottomLeft: Radius.circular(28),
-              bottomRight: Radius.circular(28),
-            ),
+            borderRadius: BorderRadius.only(bottomLeft: Radius.circular(28), bottomRight: Radius.circular(28)),
           ),
           child: SafeArea(
             bottom: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
               child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(0.25),
-                      border: Border.all(color: Colors.white, width: 2),
-                    ),
+                    width: 42, height: 42,
+                    decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.25), border: Border.all(color: Colors.white, width: 2)),
                     child: const Icon(Icons.person_rounded, color: Colors.white, size: 22),
                   ),
                   const SizedBox(width: 12),
@@ -121,15 +227,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(
-                          'Selamat datang kembali,',
-                          style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12),
-                        ),
+                        Text('Selamat datang kembali,', style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12)),
                         const SizedBox(height: 2),
-                        Text(
-                          '$_username 👋',
-                          style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
+                        Text('$_username 👋', style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                       ],
                     ),
                   ),
@@ -149,11 +249,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       
-      // ══════════════════════════════════════════
-      // BODY DENGAN FITUR PULL-TO-REFRESH
-      // ══════════════════════════════════════════
       body: RefreshIndicator(
-        onRefresh: () => _fetchActiveOrder(_userId),
+        onRefresh: _handleRefresh,
         color: const Color(0xFF3B5BDB),
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -162,38 +259,63 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               const SizedBox(height: 16),
               
-              // ── CARD ANTRIAN DINAMIS ──
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: _buildDynamicQueueCard(),
+                child: _buildDynamicQueueSection(),
               ),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
 
-              // ── PILIH LAYANAN ──
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Pilih Layanan', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
-                    const SizedBox(height: 12),
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        _buildServiceCard(iconData: Icons.water_drop_rounded, iconColor: const Color(0xFF3B5BDB), iconBg: const Color(0xFFE3F2FD), label: 'Steam Biasa', price: 'Rp 20.000'),
-                        const SizedBox(width: 10),
-                        _buildServiceCard(iconData: Icons.ac_unit_rounded, iconColor: const Color(0xFF00B4D8), iconBg: const Color(0xFFE0F7FA), label: 'Snow Wash', price: 'Rp 30.000'),
-                        const SizedBox(width: 10),
-                        _buildServiceCard(iconData: Icons.auto_awesome_rounded, iconColor: const Color(0xFFF59F00), iconBg: const Color(0xFFFFF3CD), label: 'Detailing', price: 'Rp 120.000'),
+                        const Text('Layanan Kami', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
+                        GestureDetector(
+                          onTap: () {
+                            if (widget.onSeeAllServices != null) {
+                              widget.onSeeAllServices!();
+                            } else {
+                              Navigator.push(context, MaterialPageRoute(builder: (_) => const ServiceScreen()));
+                            }
+                          },
+                          child: const Text('Lihat Semua', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF3B5BDB))),
+                        ),
                       ],
+                    ),
+                    const SizedBox(height: 14),
+                    
+                    SizedBox(
+                      height: 160, 
+                      child: PageView(
+                        controller: _sliderController,
+                        onPageChanged: (int page) {
+                          setState(() => _currentSliderPage = page);
+                        },
+                        children: [
+                          _buildImageBanner('assets/images/slider1.jpg'), 
+                          _buildImageBanner('assets/images/slider2.jpg'),
+                          _buildImageBanner('assets/images/slider3.jpg'),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(3, (index) => _buildSliderDot(index)),
                     ),
                   ],
                 ),
               ),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
 
-              // ── PROMO BANNER ──
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Container(
@@ -227,43 +349,42 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
 
-              // ── JADWAL HARI INI ──
+              // ── BAGIAN JAM OPERASIONAL DINAMIS ──
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Jadwal Hari Ini', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
+                    const Text('Jam Operasional Hari Ini', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
                     const SizedBox(height: 12),
-                    _buildScheduleCard(
-                      time: '08.00 – 09.00',
-                      status: 'Selesai',
-                      state: _SlotState.done,
-                      chips: const [_SlotChip(icon: Icons.two_wheeler_rounded, label: '4 Slot - Penuh'), _SlotChip(icon: Icons.directions_car_rounded, label: '1/2 Slot Terisi')],
-                    ),
-                    const SizedBox(height: 8),
-                    _buildScheduleCard(
-                      time: '09.00 – 10.00',
-                      status: 'Proses',
-                      state: _SlotState.active,
-                      chips: const [_SlotChip(icon: Icons.two_wheeler_rounded, label: '4 Slot - Penuh'), _SlotChip(icon: Icons.directions_car_rounded, label: '2 Slot - Penuh')],
-                    ),
-                    const SizedBox(height: 8),
-                    _buildScheduleCard(
-                      time: '10.00 – 11.00',
-                      status: 'Menunggu',
-                      state: _SlotState.waiting,
-                      chips: const [_SlotChip(icon: Icons.two_wheeler_rounded, label: '3 Slot Terisi'), _SlotChip(icon: Icons.directions_car_rounded, label: '1 Slot Terisi')],
-                    ),
-                    const SizedBox(height: 8),
-                    _buildScheduleCard(
-                      time: '11.00 – 12.00',
-                      status: 'Tersedia',
-                      state: _SlotState.available,
-                      chips: const [_SlotChip(icon: Icons.two_wheeler_rounded, label: '4 Slot Tersedia'), _SlotChip(icon: Icons.directions_car_rounded, label: '2 Slot Tersedia')],
-                    ),
+                    
+                    if (_isLoadingJam)
+                      const Center(child: CircularProgressIndicator(color: Color(0xFF3B5BDB)))
+                    else if (_jamOperasional.isEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFE9ECEF))),
+                        child: const Text('Belum ada data jam operasional yang ditambahkan dari Admin.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      )
+                    else
+                      ..._jamOperasional.map((jamData) {
+                        // Mengamankan parsing data JSON dari MongoDB
+                        String waktu = jamData['jam']?.toString() ?? '-';
+                        bool isActive = false;
+                        
+                        // Menangani tipe boolean asli atau angka (1/0) dari API
+                        if (jamData['is_active'] != null) {
+                          if (jamData['is_active'] is bool) {
+                            isActive = jamData['is_active'];
+                          } else {
+                            isActive = jamData['is_active'].toString() == '1' || jamData['is_active'].toString() == 'true';
+                          }
+                        }
+
+                        return _buildOperasionalCard(waktu, isActive);
+                      }),
                   ],
                 ),
               ),
@@ -277,10 +398,58 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ══════════════════════════════════════════════════════════
-  // WIDGET CARD ANTRIAN (Di-generate Berdasarkan Database)
+  // WIDGET CARD JAM OPERASIONAL DINAMIS
   // ══════════════════════════════════════════════════════════
-  Widget _buildDynamicQueueCard() {
-    // 1. State Loading
+  Widget _buildOperasionalCard(String waktu, bool isActive) {
+    // Pengaturan Warna berdasarkan Status Aktif/Tutup
+    final Color bgColor = isActive ? Colors.white : const Color(0xFFF8F9FA);
+    final Color timeColor = isActive ? const Color(0xFF1A1A2E) : const Color(0xFF94A3B8);
+    final Color statusColor = isActive ? const Color(0xFF4CAF50) : const Color(0xFFE53935);
+    final String statusText = isActive ? 'Tersedia' : 'Tutup';
+    final IconData iconData = isActive ? Icons.check_circle_rounded : Icons.cancel_rounded;
+    final Color iconBg = isActive ? const Color(0xFFE8F5E9) : const Color(0xFFFFEBEE);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE9ECEF)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.access_time_rounded, size: 18, color: timeColor),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Row(
+              children: [
+                Text(
+                  waktu, 
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: timeColor),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '| $statusText', 
+                  style: TextStyle(fontSize: 12, color: statusColor, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            width: 32, height: 32,
+            decoration: BoxDecoration(color: iconBg, shape: BoxShape.circle),
+            child: Icon(iconData, size: 18, color: statusColor),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // KUMPULAN WIDGET HELPER LAINNYA (Sama dengan sebelumnya)
+  // ══════════════════════════════════════════════════════════
+  Widget _buildDynamicQueueSection() {
     if (_isLoadingOrder) {
       return Container(
         height: 90,
@@ -289,8 +458,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    // 2. State Kosong (Belum ada pesanan)
-    if (_activeOrder == null) {
+    if (_activeOrders.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
@@ -307,7 +475,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Status Belum Tersedia', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
+                  const Text('Belum ada pesanan', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
                   const SizedBox(height: 4),
                   Text('Kamu belum memesan jadwal cuci hari ini. Yuk pesan sekarang!', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
                 ],
@@ -318,197 +486,142 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    // 3. Ekstrak data dari Backend
-    String status = _activeOrder!['status'] ?? 'Booking';
-    String kodePesanan = _activeOrder!['kode_pesanan'] ?? '-';
-    String kendaraan = _activeOrder!['kendaraan'] ?? 'Kendaraan';
-    String namaLayanan = _activeOrder!['layanan']?['nama_layanan'] ?? 'Steam Cuci';
-    String noAntrian = _activeOrder!['no_antrian'] ?? '00';
-    if (noAntrian == '-' || noAntrian.isEmpty) noAntrian = '--';
+    int displayCount = _activeOrders.length > 3 ? 3 : _activeOrders.length;
+    bool showSeeAll = _activeOrders.length > 3;
 
-    // 4. Atur tampilan berdasarkan status
-    String badgeText = "Booking";
-    Color badgeBg = const Color(0xFFE8F5E9);
-    Color badgeTextColor = const Color(0xFF2E7D32);
-    String subtitleText = "Pesanan terdaftar di sistem";
-    String estimasiText = "Menunggu info admin";
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            const Text('Pesanan Aktif', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
+            if (showSeeAll)
+              GestureDetector(
+                onTap: () {
+                  if (widget.onSeeAllOrders != null) {
+                    widget.onSeeAllOrders!();
+                  } else {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const OrderScreen()));
+                  }
+                },
+                child: const Text('Lihat Semua', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF3B5BDB))),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
 
-    if (status == 'Booking' || status == 'Pending') {
-      badgeText = "Baru Di-booking";
-      badgeBg = const Color(0xFFE3F2FD);
-      badgeTextColor = const Color(0xFF1565C0);
-      subtitleText = "$namaLayanan • $kendaraan";
-      estimasiText = "Menunggu persetujuan Admin";
-    } else if (status == 'Menunggu Pembayaran') {
-      badgeText = "Belum Bayar";
-      badgeBg = const Color(0xFFFFF3CD);
-      badgeTextColor = const Color(0xFFB78103);
-      subtitleText = "Kode: $kodePesanan";
-      estimasiText = "Silakan lengkapi pembayaran Anda";
-    } else if (status == 'Antri') {
-      badgeText = "Dalam Antrean";
-      badgeBg = const Color(0xFFE8F5E9);
-      badgeTextColor = const Color(0xFF2E7D32);
-      subtitleText = "$namaLayanan • $kendaraan";
-      estimasiText = "Estimasi siap dalam ±25 menit";
-    } else if (status == 'Proses') {
-      badgeText = "Sedang Diproses";
-      badgeBg = const Color(0xFFE0F7FA);
-      badgeTextColor = const Color(0xFF006064);
-      subtitleText = "Kendaraan sedang dicuci tim";
-      estimasiText = "Harap tunggu sebentar...";
-    } else if (status == 'Selesai') {
-      badgeText = "Cucian Selesai";
-      badgeBg = const Color(0xFFF3E5F5);
-      badgeTextColor = const Color(0xFF6A1B9A);
-      subtitleText = "Kelar! Kendaraan kinclong";
-      estimasiText = "Silakan lakukan pengambilan";
-    } else if (status == 'Batal') {
-      badgeText = "Dibatalkan";
-      badgeBg = const Color(0xFFFFEBEE);
-      badgeTextColor = const Color(0xFFC62828);
-      subtitleText = "Booking telah di-cancel";
-      estimasiText = "Hubungi admin untuk info lanjut";
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.07), blurRadius: 16, offset: const Offset(0, 4))],
-      ),
-      child: Row(
-        children: [
-          // Nomor Antrian
-          Text(noAntrian, style: const TextStyle(fontSize: 38, fontWeight: FontWeight.w900, color: Color(0xFF3B5BDB), height: 1)),
-          const SizedBox(width: 14),
+        ...List.generate(displayCount, (index) {
+          Map<String, dynamic> order = _activeOrders[index];
+          int urutan = index + 1; 
           
-          // Info Detail
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(subtitleText, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
-                const SizedBox(height: 5),
-                Row(
-                  children: [
-                    const Icon(Icons.access_time_rounded, size: 13, color: Color(0xFF94A3B8)),
-                    const SizedBox(width: 4),
-                    Expanded(child: Text(estimasiText, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)))),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
+          String statusPesanan = order['status']?.toString() ?? 'Belum Dikonfirmasi';
+          String namaLayanan = order['layanan']?['nama_layanan']?.toString() ?? 'Layanan Cuci';
+          String kendaraan = order['kendaraan']?.toString() ?? '-';
+          String platNomor = order['plat_nomor']?.toString() ?? '-';
 
-          // Badge Status
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(color: badgeBg, borderRadius: BorderRadius.circular(20)),
-            child: Text(badgeText, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: badgeTextColor)),
-          ),
-        ],
-      ),
+          return GestureDetector(
+            onTap: () => _handleQueueTap(order),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE9ECEF)),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(color: const Color(0xFFE8F0FE), borderRadius: BorderRadius.circular(12)),
+                    child: Center(
+                      child: Text('#$urutan', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF3B5BDB))),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(namaLayanan, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        const SizedBox(height: 5),
+                        Row(
+                          children: [
+                            const Icon(Icons.two_wheeler_rounded, size: 12, color: Color(0xFF64748B)),
+                            const SizedBox(width: 4),
+                            Expanded(child: Text('$kendaraan ($platNomor)', style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  _buildBadge(statusPesanan),
+                ],
+              ),
+            ),
+          );
+        }),
+      ],
     );
   }
 
-  // Helper: Card Layanan
-  Widget _buildServiceCard({required IconData iconData, required Color iconColor, required Color iconBg, required String label, required String price}) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: const Color(0xFFE8ECFF))),
-        child: Column(
-          children: [
-            Container(
-              width: 46, height: 46,
-              decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(12)),
-              child: Icon(iconData, color: iconColor, size: 22),
-            ),
-            const SizedBox(height: 8),
-            Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
-            const SizedBox(height: 4),
-            const Text('Mulai dari', style: TextStyle(fontSize: 9, color: Color(0xFF94A3B8))),
-            Text(price, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF3B5BDB))),
-          ],
+  Widget _buildImageBanner(String imagePath) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), color: Colors.grey.shade300),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Image.asset(
+          imagePath,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  Icon(Icons.image_not_supported_rounded, color: Colors.grey, size: 30),
+                  SizedBox(height: 5),
+                  Text('Gambar belum ada', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                ],
+              ),
+            );
+          },
         ),
       ),
     );
   }
 
-  // Helper: Card Jadwal
-  Widget _buildScheduleCard({required String time, required String status, required _SlotState state, required List<_SlotChip> chips}) {
-    Color bgColor, timeColor, statusColor, chipBg, chipTextColor;
-    Widget trailingIcon;
-
-    switch (state) {
-      case _SlotState.done:
-        bgColor = const Color(0xFFF8F9FA); timeColor = const Color(0xFF1A1A2E); statusColor = const Color(0xFF94A3B8); chipBg = const Color(0xFFE2E8F0); chipTextColor = const Color(0xFF64748B);
-        trailingIcon = Container(width: 30, height: 30, decoration: const BoxDecoration(color: Color(0xFFE8F5E9), shape: BoxShape.circle), child: const Icon(Icons.check_rounded, size: 16, color: Color(0xFF2E7D32)));
-        break;
-      case _SlotState.active:
-        bgColor = const Color(0xFF4C6EF5); timeColor = Colors.white; statusColor = Colors.white70; chipBg = Colors.white.withOpacity(0.25); chipTextColor = Colors.white;
-        trailingIcon = Container(width: 30, height: 30, decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle), child: Icon(Icons.more_horiz_rounded, size: 16, color: Colors.white.withOpacity(0.9)));
-        break;
-      case _SlotState.waiting:
-        bgColor = Colors.white; timeColor = const Color(0xFF1A1A2E); statusColor = const Color(0xFFF59F00); chipBg = const Color(0xFFFFF3CD); chipTextColor = const Color(0xFF92400E);
-        trailingIcon = Container(width: 30, height: 30, decoration: const BoxDecoration(color: Color(0xFFFFF3CD), shape: BoxShape.circle), child: const Icon(Icons.schedule_rounded, size: 16, color: Color(0xFFF59F00)));
-        break;
-      case _SlotState.available:
-        bgColor = Colors.white; timeColor = const Color(0xFF1A1A2E); statusColor = const Color(0xFF4CAF50); chipBg = const Color(0xFFE8F5E9); chipTextColor = const Color(0xFF2E7D32);
-        trailingIcon = Container(width: 30, height: 30, decoration: const BoxDecoration(color: Color(0xFFE8F5E9), shape: BoxShape.circle), child: const Icon(Icons.add_rounded, size: 18, color: Color(0xFF2E7D32)));
-        break;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(14), border: state != _SlotState.active ? Border.all(color: const Color(0xFFE9ECEF)) : null),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(time, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: timeColor)),
-                    const SizedBox(width: 6),
-                    Text('| $status', style: TextStyle(fontSize: 12, color: statusColor)),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6, runSpacing: 6,
-                  children: chips.map((c) => Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: chipBg, borderRadius: BorderRadius.circular(20)),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(c.icon, size: 12, color: chipTextColor),
-                        const SizedBox(width: 4),
-                        Text(c.label, style: TextStyle(fontSize: 10, color: chipTextColor, fontWeight: FontWeight.w600)),
-                      ],
-                    ),
-                  )).toList(),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          trailingIcon,
-        ],
+  Widget _buildSliderDot(int index) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      margin: const EdgeInsets.only(right: 6),
+      height: 6,
+      width: _currentSliderPage == index ? 20 : 6,
+      decoration: BoxDecoration(
+        color: _currentSliderPage == index ? const Color(0xFF3B5BDB) : const Color(0xFFCBD5E1),
+        borderRadius: BorderRadius.circular(3),
       ),
     );
   }
-}
 
-// Enumerasi dan class pembantu untuk Jadwal
-enum _SlotState { done, active, waiting, available }
-class _SlotChip {
-  final IconData icon;
-  final String label;
-  const _SlotChip({required this.icon, required this.label});
+  Widget _buildBadge(String status) {
+    if (status == 'Belum Dikonfirmasi') return _badge('Tunggu Admin', const Color(0xFFFFF3CD), const Color(0xFFB78103));
+    if (status == 'Belum Bayar') return _badge('Belum Bayar', const Color(0xFFFFE0B2), const Color(0xFFE65100));
+    if (status == 'Sedang Diverifikasi') return _badge('Verifikasi', const Color(0xFFE0E7FF), const Color(0xFF3B5BDB));
+    if (status == 'Antri' || status == 'Proses') return _badge(status, const Color(0xFFE8F0FE), const Color(0xFF3B5BDB));
+    return _badge(status, const Color(0xFFF1F5F9), const Color(0xFF64748B));
+  }
+
+  Widget _badge(String label, Color bg, Color fg) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
+      child: Text(label, style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: fg)),
+    );
+  }
 }

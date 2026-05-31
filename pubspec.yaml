@@ -11,7 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  image_picker: ^1.1.2        # untuk kirim gambar di chat
+  image_picker: ^1.2.2        # untuk kirim gambar di chat
   http: ^1.2.0
   shared_preferences: ^2.2.2
   intl: ^0.19.0

@@ -1,218 +1,177 @@
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'booking_confirmed_screen.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'dart:async';
+
+// Import layar Confirmed buatanmu
+import 'booking_confirmed_screen.dart'; 
 
 class BookingWaitingScreen extends StatefulWidget {
+  final String orderId;
   final String serviceName;
   final String date;
+  
+  // Data tambahan untuk diteruskan hingga ke bukti pembayaran
   final String vehicle;
   final String plateNumber;
-  final String slot;
   final String price;
+  final String bookingCode;
 
   const BookingWaitingScreen({
     super.key,
+    required this.orderId,
     required this.serviceName,
     required this.date,
     required this.vehicle,
     required this.plateNumber,
-    required this.slot,
     required this.price,
+    required this.bookingCode,
   });
 
   @override
   State<BookingWaitingScreen> createState() => _BookingWaitingScreenState();
 }
 
-class _BookingWaitingScreenState extends State<BookingWaitingScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _spinController;
-  late final String _bookingCode;
+class _BookingWaitingScreenState extends State<BookingWaitingScreen> {
+  Timer? _pollingTimer;
+  bool _isDisposed = false;
 
   @override
   void initState() {
     super.initState();
-
-    // Generate kode booking
-    final now = DateTime.now();
-    final rand = math.Random().nextInt(900) + 100;
-    _bookingCode =
-        'STG-${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}-$rand';
-
-    _spinController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    )..repeat();
-
-    // Setelah 4 detik → BookingConfirmedScreen
-    Future.delayed(const Duration(seconds: 4), () {
-      if (!mounted) return;
-      _spinController.stop();
-      Navigator.pushReplacement(
-        context,
-        PageRouteBuilder(
-          pageBuilder: (_, __, ___) => BookingConfirmedScreen(
-            serviceName: widget.serviceName,
-            date: widget.date,
-            vehicle: widget.vehicle,
-            plateNumber: widget.plateNumber,
-            slot: widget.slot,
-            price: widget.price,
-            bookingCode: _bookingCode,
-          ),
-          transitionDuration: const Duration(milliseconds: 400),
-          transitionsBuilder: (_, anim, __, child) =>
-              FadeTransition(opacity: anim, child: child),
-        ),
-      );
-    });
+    _startPolling();
   }
 
   @override
   void dispose() {
-    _spinController.dispose();
+    _isDisposed = true;
+    _pollingTimer?.cancel();
     super.dispose();
+  }
+
+  // --- FUNGSI PENGECEKAN STATUS KE SERVER (POLLING) ---
+  void _startPolling() {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+      if (_isDisposed) {
+        timer.cancel();
+        return;
+      }
+
+      try {
+        final response = await http.get(Uri.parse('http://192.168.1.14:8000/api/orders/status/${widget.orderId}'));
+        
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          
+          if (data['success'] == true) {
+            String currentStatus = data['status'];
+            
+            // JIKA ADMIN SUDAH MENGKONFIRMASI JADWAL (Status berubah jadi Belum Bayar)
+            if (currentStatus == 'Belum Bayar') {
+              timer.cancel(); // Hentikan pencarian
+              
+              if (mounted) {
+                // PINDAH KE HALAMAN BOOKING CONFIRMED SCREEN (Bawa semua data)
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => BookingConfirmedScreen(
+                      orderId: widget.orderId, // <-- INI TAMBAHAN PENTINGNYA
+                      serviceName: widget.serviceName,
+                      date: widget.date,
+                      vehicle: widget.vehicle,
+                      plateNumber: widget.plateNumber,
+                      slot: '-', // Slot antrian belum ada di tahap ini
+                      price: widget.price,
+                      bookingCode: widget.bookingCode,
+                    ), 
+                  )
+                );
+              }
+            }
+            // Jika pesanan ditolak/dihapus oleh sistem atau admin
+            else if (currentStatus == 'Dihapus') {
+              timer.cancel();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(data['message'] ?? 'Pesanan dibatalkan/ditolak.'))
+                );
+                Navigator.pop(context); // Kembali ke halaman Order Screen
+              }
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint("Polling error: $e");
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
+    return WillPopScope(
+      onWillPop: () async {
+        _pollingTimer?.cancel(); 
+        return true; 
+      },
       child: Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC),
-        // Tidak ada AppBar
-        body: Stack(
-          children: [
-            // Dim overlay
-            Positioned.fill(child: Container(color: Colors.black.withOpacity(0.45))),
-
-            // Bottom modal
-            Align(
-              alignment: Alignment.bottomCenter,
-              child: Container(
-                width: double.infinity,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        backgroundColor: Colors.white,
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.black),
+            onPressed: () {
+              _pollingTimer?.cancel();
+              Navigator.pop(context); // Kembali ke Order Screen
+            },
+          ),
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(color: Color(0xFF3B5BDB)),
+              const SizedBox(height: 32),
+              const Text(
+                'Menunggu Konfirmasi Admin...',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E)),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                widget.serviceName,
+                style: const TextStyle(fontSize: 15, color: Color(0xFF3B5BDB), fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                widget.date,
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 40),
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 40),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade200)
                 ),
-                padding: const EdgeInsets.fromLTRB(28, 36, 28, 52),
                 child: Column(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Spinner
-                    RotationTransition(
-                      turns: _spinController,
-                      child: SizedBox(
-                        width: 76,
-                        height: 76,
-                        child: CustomPaint(painter: _SpinnerPainter()),
-                      ),
-                    ),
-                    const SizedBox(height: 28),
-                    const Text('Booking Dalam Persetujuan',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
+                    const Icon(Icons.info_outline_rounded, color: Color(0xFF64748B), size: 24),
                     const SizedBox(height: 8),
-                    const Text('Pesanan kamu sedang dikonfirmasi,\nsilahkan tunggu',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8), height: 1.6)),
-                    const SizedBox(height: 28),
-                    _DashedBox(
-                      borderColor: const Color(0xFFCBD5E1),
-                      child: Column(
-                        children: [
-                          const Text('KODE BOOKING',
-                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
-                                  color: Color(0xFF94A3B8), letterSpacing: 2)),
-                          const SizedBox(height: 8),
-                          Text(_bookingCode,
-                              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold,
-                                  color: Color(0xFF1A1A2E), letterSpacing: 1)),
-                        ],
-                      ),
+                    Text(
+                      'Mohon jangan tutup halaman ini.\nPesanan Anda sedang ditinjau ketersediaannya oleh admin kami.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600, height: 1.5),
                     ),
                   ],
                 ),
-              ),
-            ),
-          ],
+              )
+            ],
+          ),
         ),
       ),
     );
   }
-}
-
-// ── Spinner ──────────────────────────────────────────────────────────────────
-class _SpinnerPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    const n = 12;
-    final cx = size.width / 2;
-    final cy = size.height / 2;
-    final outerR = size.width / 2 - 2;
-    final innerR = outerR * 0.54;
-    for (int i = 0; i < n; i++) {
-      final angle = (i / n) * 2 * math.pi - math.pi / 2;
-      final paint = Paint()
-        ..color = const Color(0xFF94A3B8).withOpacity((i + 1) / n)
-        ..strokeWidth = 4.5
-        ..strokeCap = StrokeCap.round;
-      canvas.drawLine(
-        Offset(cx + innerR * math.cos(angle), cy + innerR * math.sin(angle)),
-        Offset(cx + outerR * math.cos(angle), cy + outerR * math.sin(angle)),
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_SpinnerPainter _) => false;
-}
-
-// ── Dashed border box ─────────────────────────────────────────────────────────
-class _DashedBox extends StatelessWidget {
-  final Widget child;
-  final Color borderColor;
-  const _DashedBox({required this.child, required this.borderColor});
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _DashedPainter(color: borderColor),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-        child: Center(child: child),
-      ),
-    );
-  }
-}
-
-class _DashedPainter extends CustomPainter {
-  final Color color;
-  const _DashedPainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 1.5
-      ..style = PaintingStyle.stroke;
-    const dw = 8.0;
-    const ds = 5.0;
-    final path = Path()
-      ..addRRect(RRect.fromRectAndRadius(
-          Rect.fromLTWH(0, 0, size.width, size.height), const Radius.circular(14)));
-    for (final m in path.computeMetrics()) {
-      double d = 0;
-      while (d < m.length) {
-        final n = d + dw;
-        canvas.drawPath(m.extractPath(d, n < m.length ? n : m.length), paint);
-        d += dw + ds;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_DashedPainter o) => o.color != color;
 }

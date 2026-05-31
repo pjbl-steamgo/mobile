@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'dart:async'; // WAJIB UNTUK TIMER AUTO REFRESH
 import 'package:http/http.dart' as http;
 
 import 'create_order_screen.dart';
 import 'order_detail_screen.dart';
+// Import layar-layar baru untuk alur booking & pembayaran
+import 'booking_waiting_screen.dart';
+import 'payment_screen.dart';
+import 'payment_waiting_screen.dart';
 
 class OrderScreen extends StatefulWidget {
   const OrderScreen({super.key});
@@ -16,25 +21,39 @@ class OrderScreen extends StatefulWidget {
 class _OrderScreenState extends State<OrderScreen> {
   bool _isLoading = true;
   List<dynamic> _orderHistory = [];
+  Timer? _pollingTimer; // Variabel untuk Auto-Refresh
 
   @override
   void initState() {
     super.initState();
-    _fetchOrderHistory();
+    _fetchOrderHistory(); // Tarik data pertama kali (dengan loading)
+    
+    // ── LOGIKA AUTO REFRESH SETIAP 5 DETIK ──
+    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      _fetchOrderHistory(isSilent: true); // Tarik data diam-diam (tanpa loading)
+    });
+  }
+
+  @override
+  void dispose() {
+    _pollingTimer?.cancel(); // Matikan timer saat pindah menu agar tidak bocor memori
+    super.dispose();
   }
 
   // Fungsi untuk menarik data riwayat pesanan dari Laravel
-  Future<void> _fetchOrderHistory() async {
-    setState(() {
-      _isLoading = true;
-    });
+  Future<void> _fetchOrderHistory({bool isSilent = false}) async {
+    if (!isSilent && mounted) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
 
     try {
       final prefs = await SharedPreferences.getInstance();
       final idUser = prefs.getString('id_user') ?? "";
 
       if (idUser.isEmpty) {
-        setState(() => _isLoading = false);
+        if (!isSilent && mounted) setState(() => _isLoading = false);
         return;
       }
 
@@ -52,17 +71,21 @@ class _OrderScreenState extends State<OrderScreen> {
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
         if (responseData['success'] == true) {
-          setState(() {
-            _orderHistory = responseData['data'];
-          });
+          if (mounted) {
+            setState(() {
+              _orderHistory = responseData['data'];
+            });
+          }
         }
       }
     } catch (e) {
       debugPrint("Gagal memuat riwayat: $e");
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (!isSilent && mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -131,7 +154,7 @@ class _OrderScreenState extends State<OrderScreen> {
         ),
       ),
       body: RefreshIndicator(
-        onRefresh: _fetchOrderHistory,
+        onRefresh: () => _fetchOrderHistory(isSilent: false),
         color: const Color(0xFF3B5BDB),
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -144,9 +167,11 @@ class _OrderScreenState extends State<OrderScreen> {
                 const Text('Riwayat Transaksi',
                     style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
                 GestureDetector(
-                  onTap: () {
-                    Navigator.push(context,
+                  onTap: () async {
+                    // Tunggu user kembali dari layar create order, lalu refresh datanya
+                    await Navigator.push(context,
                         MaterialPageRoute(builder: (_) => const CreateOrderScreen()));
+                    _fetchOrderHistory(isSilent: true);
                   },
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
@@ -202,38 +227,68 @@ class _OrderScreenState extends State<OrderScreen> {
 
   // Widget Pembuat Kartu Pesanan Dinamis
   Widget _buildOrderCard(BuildContext context, Map<String, dynamic> order) {
-    // Ekstrak data dari JSON
-    String status = order['status'] ?? 'Booking';
-    String namaLayanan = order['layanan']?['nama_layanan'] ?? 'Layanan Cuci';
+    String statusPesanan = order['status']?.toString() ?? 'Belum Dikonfirmasi';
+    String orderId = order['_id']?.toString() ?? order['id']?.toString() ?? '';
     
-    // Format tanggal sederhana (bisa dipercanggih pakai package intl jika mau)
-    String rawDate = order['tanggal'] ?? order['created_at'] ?? '';
-    String tanggalTampil = rawDate.length >= 10 ? rawDate.substring(0, 10) : rawDate;
+    var dataLayanan = order['layanan'];
+    String namaLayanan = dataLayanan?['nama_layanan']?.toString() ?? 'Layanan Cuci';
+    
+    String tanggalTampil = order['tanggal']?.toString() ?? order['created_at']?.toString() ?? '-';
+    String kendaraan = order['kendaraan']?.toString() ?? '-';
+    String platNomor = order['plat_nomor']?.toString() ?? '-';
+    String hargaTampil = 'Rp ${order['total_harga']?.toString() ?? 0}';
+    String bookingCode = order['kode_pesanan']?.toString() ?? '-';
 
-    String kendaraan = order['kendaraan'] ?? '-';
-    String platNomor = order['plat_nomor'] ?? '-';
-    
-    // Format harga
-    int totalHarga = order['total_harga'] ?? 0;
-    String hargaTampil = 'Rp ${totalHarga.toString()}'; // Bisa ditambahkan titik ribuan nantinya
+    String estimasiLayanan = '-';
+    if (dataLayanan != null) {
+      var estDb = dataLayanan['estimasi_waktu'] ?? dataLayanan['estimasi'] ?? dataLayanan['waktu'] ?? dataLayanan['durasi'] ?? order['estimasi_waktu'];
+      if (estDb != null) {
+        String estText = estDb.toString();
+        if (estText.toLowerCase().contains('menit') || estText.toLowerCase().contains('jam')) {
+          estimasiLayanan = estText;
+        } else {
+          estimasiLayanan = '± $estText Menit';
+        }
+      } else {
+        estimasiLayanan = 'Belum ada estimasi';
+      }
+    }
 
     return GestureDetector(
-      onTap: () {
-        // Navigasi ke halaman detail dengan membawa data dinamis
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => OrderDetailScreen(
-              serviceName: namaLayanan,
-              date: tanggalTampil,
-              vehicle: kendaraan,
-              plateNumber: platNomor,
-              slot: order['no_antrian'] ?? '-',
-              price: hargaTampil,
-              bookingCode: order['kode_pesanan'] ?? 'STG-0000',
-            ),
-          ),
-        );
+      onTap: () async {
+        if (statusPesanan == 'Belum Dikonfirmasi') {
+          await Navigator.push(context, MaterialPageRoute(builder: (_) => BookingWaitingScreen(
+            orderId: orderId, serviceName: namaLayanan, date: tanggalTampil,
+            vehicle: kendaraan, plateNumber: platNomor, price: hargaTampil, bookingCode: bookingCode,
+          )));
+        } 
+        else if (statusPesanan == 'Belum Bayar') {
+          await Navigator.push(context, MaterialPageRoute(builder: (_) => PaymentScreen(
+            orderId: orderId, serviceName: namaLayanan, date: tanggalTampil,
+            vehicle: kendaraan, plateNumber: platNomor, price: hargaTampil, bookingCode: bookingCode,
+          )));
+        } 
+        else if (statusPesanan == 'Sedang Diverifikasi') {
+          await Navigator.push(context, MaterialPageRoute(builder: (_) => PaymentWaitingScreen(
+            orderId: orderId, serviceName: namaLayanan, date: tanggalTampil,
+            vehicle: kendaraan, plateNumber: platNomor, price: hargaTampil, bookingCode: bookingCode,
+          )));
+        } 
+        else {
+          await Navigator.push(context, MaterialPageRoute(builder: (_) => OrderDetailScreen(
+            orderId: orderId, 
+            serviceName: namaLayanan, 
+            date: tanggalTampil, 
+            vehicle: kendaraan,
+            plateNumber: platNomor, 
+            slot: statusPesanan, 
+            price: hargaTampil, 
+            bookingCode: bookingCode,
+            estimasiWaktu: estimasiLayanan, 
+          )));
+        }
+        // Refresh secara cepat (diam-diam) tanpa memunculkan loading spinner saat kembali
+        _fetchOrderHistory(isSilent: true);
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
@@ -266,7 +321,7 @@ class _OrderScreenState extends State<OrderScreen> {
                       ],
                     ),
                   ),
-                  _buildBadge(status),
+                  _buildBadge(statusPesanan),
                 ],
               ),
 
@@ -301,7 +356,7 @@ class _OrderScreenState extends State<OrderScreen> {
                       ],
                     ),
                   ),
-                  _buildActionButton(status),
+                  _buildActionButton(statusPesanan),
                 ],
               ),
             ],
@@ -311,19 +366,15 @@ class _OrderScreenState extends State<OrderScreen> {
     );
   }
 
-  // Penyesuaian Badge Status berdasarkan String dari Laravel
+  // Penyesuaian Badge Status
   Widget _buildBadge(String status) {
-    if (status == 'Booking' || status == 'Pending') {
-      return _badge('Booking', const Color(0xFFFFF3CD), const Color(0xFFB78103));
-    } else if (status == 'Menunggu Pembayaran') {
-      return _badge('Belum Bayar', const Color(0xFFFFF3CD), const Color(0xFFB78103));
-    } else if (status == 'Antri' || status == 'Proses') {
-      return _badge('Proses', const Color(0xFFE8F0FE), const Color(0xFF3B5BDB));
-    } else if (status == 'Selesai') {
-      return _badge('Selesai', const Color(0xFFF1F5F9), const Color(0xFF64748B));
-    } else if (status == 'Batal') {
-      return _badge('Batal', const Color(0xFFFFEBEE), const Color(0xFFE53935));
-    }
+    if (status == 'Belum Dikonfirmasi') return _badge('Tunggu Admin', const Color(0xFFFFF3CD), const Color(0xFFB78103));
+    if (status == 'Belum Bayar') return _badge('Belum Bayar', const Color(0xFFFFE0B2), const Color(0xFFE65100)); 
+    if (status == 'Sedang Diverifikasi') return _badge('Verifikasi', const Color(0xFFE0E7FF), const Color(0xFF3B5BDB));
+    if (status == 'Antri') return _badge('Antri', const Color(0xFFE8F0FE), const Color(0xFF3B5BDB));
+    if (status == 'Proses') return _badge('Proses', const Color(0xFFE0F7FA), const Color(0xFF006064)); // Warna lebih tua untuk Proses
+    if (status == 'Selesai') return _badge('Selesai', const Color(0xFFE8F5E9), const Color(0xFF2E7D32));
+    if (status == 'Batal' || status == 'Dihapus') return _badge('Batal', const Color(0xFFFFEBEE), const Color(0xFFE53935));
     return _badge(status, const Color(0xFFF1F5F9), const Color(0xFF64748B));
   }
 
@@ -331,18 +382,19 @@ class _OrderScreenState extends State<OrderScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
-      child: Text(label,
-          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: fg)),
+      child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: fg)),
     );
   }
 
   // Tombol aksi dinamis menyesuaikan status
   Widget _buildActionButton(String status) {
-    if (status == 'Antri' || status == 'Proses' || status == 'Booking' || status == 'Menunggu Pembayaran') {
+    if (status == 'Belum Dikonfirmasi' || status == 'Belum Bayar' || status == 'Sedang Diverifikasi') {
+      return _actionBtn('Lanjut', const Color(0xFF3B5BDB), null, Colors.white, true);
+    } else if (status == 'Antri' || status == 'Proses') {
       return _actionBtn('Lacak', const Color(0xFF3B5BDB), null, Colors.white, true);
     } else if (status == 'Selesai') {
       return _actionBtn('Cek', Colors.transparent, const Color(0xFFCBD5E1), const Color(0xFF64748B), false);
-    } else if (status == 'Batal') {
+    } else if (status == 'Batal' || status == 'Dihapus') {
       return _actionBtn('Cek', Colors.transparent, const Color(0xFFE53935), const Color(0xFFE53935), false);
     }
     return _actionBtn('Detail', Colors.transparent, const Color(0xFFCBD5E1), const Color(0xFF64748B), false);
@@ -356,8 +408,7 @@ class _OrderScreenState extends State<OrderScreen> {
         borderRadius: BorderRadius.circular(20),
         border: borderColor != null ? Border.all(color: borderColor) : null,
       ),
-      child: Text(label,
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: textColor)),
+      child: Text(label, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: textColor)),
     );
   }
 }

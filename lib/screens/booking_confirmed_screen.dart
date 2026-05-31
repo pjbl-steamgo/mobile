@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
-import 'order_detail_screen.dart';
-import 'order_repository.dart';
+
+// Mengarah ke layar pembayaran sesuai alur baru
+import 'payment_screen.dart'; 
+// Asumsi kamu masih menyimpan riwayat pesanan secara lokal
+import 'order_repository.dart'; 
 
 class BookingConfirmedScreen extends StatefulWidget {
+  // Tambahan orderId untuk diproses di API Laravel saat pembayaran
+  final String orderId; 
   final String serviceName;
   final String date;
   final String vehicle;
@@ -13,6 +18,7 @@ class BookingConfirmedScreen extends StatefulWidget {
 
   const BookingConfirmedScreen({
     super.key,
+    required this.orderId,
     required this.serviceName,
     required this.date,
     required this.vehicle,
@@ -35,7 +41,7 @@ class _BookingConfirmedScreenState extends State<BookingConfirmedScreen>
   void initState() {
     super.initState();
 
-    // Tambah ke riwayat pesanan
+    // Tambah ke riwayat pesanan (Menggunakan kode aslimu)
     OrderRepository.instance.addOrder(OrderItem(
       serviceName: widget.serviceName,
       date: widget.date,
@@ -64,7 +70,6 @@ class _BookingConfirmedScreenState extends State<BookingConfirmedScreen>
       canPop: false,
       child: Scaffold(
         backgroundColor: const Color(0xFFF8FAFC),
-        // Tidak ada AppBar
         body: Stack(
           children: [
             // Dim overlay
@@ -98,10 +103,10 @@ class _BookingConfirmedScreenState extends State<BookingConfirmedScreen>
                     ),
                     const SizedBox(height: 20),
 
-                    const Text('Booking Berhasil',
+                    const Text('Booking Disetujui Admin',
                         style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
                     const SizedBox(height: 8),
-                    const Text('Pesanan kamu sudah dikonfirmasi,\nsilahkan datang sesuai jadwal',
+                    const Text('Jadwal kamu tersedia!\nSilakan lanjutkan ke tahap pembayaran.',
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8), height: 1.6)),
                     const SizedBox(height: 28),
@@ -123,23 +128,23 @@ class _BookingConfirmedScreenState extends State<BookingConfirmedScreen>
                     ),
                     const SizedBox(height: 20),
 
-                    // ── Tombol Lihat Status Antrian ──
+                    // ── Tombol Lanjut ke Pembayaran (Alur Baru) ──
                     GestureDetector(
                       onTap: () {
-                        Navigator.pushAndRemoveUntil(
+                        // Menggunakan pushReplacement agar user tidak bisa kembali ke layar ini
+                        Navigator.pushReplacement(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => OrderDetailScreen(
+                            builder: (_) => PaymentScreen(
+                              orderId: widget.orderId,
+                              price: widget.price,
                               serviceName: widget.serviceName,
                               date: widget.date,
                               vehicle: widget.vehicle,
                               plateNumber: widget.plateNumber,
-                              slot: widget.slot,
-                              price: widget.price,
                               bookingCode: widget.bookingCode,
                             ),
                           ),
-                          (route) => route.isFirst,
                         );
                       },
                       child: Container(
@@ -147,14 +152,14 @@ class _BookingConfirmedScreenState extends State<BookingConfirmedScreen>
                         height: 52,
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
-                            colors: [Color(0xFF00B4D8), Color(0xFF0096C7)],
+                            colors: [Color(0xFF3B5BDB), Color(0xFF2E46A7)],
                             begin: Alignment.centerLeft,
                             end: Alignment.centerRight,
                           ),
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: const Center(
-                          child: Text('Lihat Status Antrian',
+                          child: Text('Lanjutkan ke Pembayaran',
                               style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white)),
                         ),
                       ),

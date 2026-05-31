@@ -3,8 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 
-import 'booking_waiting_screen.dart'; // Sesuaikan dengan navigasi kamu selanjutnya
+// Pastikan import ini mengarah ke file Booking Waiting Screen kamu
+import 'booking_waiting_screen.dart'; 
 
 class CreateOrderScreen extends StatefulWidget {
   const CreateOrderScreen({super.key});
@@ -16,10 +18,11 @@ class CreateOrderScreen extends StatefulWidget {
 class _CreateOrderScreenState extends State<CreateOrderScreen> {
   // --- STATE VARIABEL ---
   bool _isLoadingServices = true;
-  List<dynamic> _servicesList = [];
+  bool _isSubmitting = false; 
+  List<dynamic> _servicesList = []; 
 
   // Pilihan User
-  String? _selectedCategory;
+  String _selectedCategory = 'Motor'; 
   Map<String, dynamic>? _selectedService;
   DateTime _selectedDate = DateTime.now();
   String? _selectedTime;
@@ -28,15 +31,13 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   final TextEditingController _vehicleNameController = TextEditingController();
   final TextEditingController _plateNumberController = TextEditingController();
 
-  // Kategori Kendaraan Fix (Bisa diatur admin aktif/tidaknya)
+  // Kategori Kendaraan Fix
   final List<Map<String, dynamic>> _categories = [
     {'nama': 'Motor', 'icon': Icons.two_wheeler_rounded, 'aktif': true},
     {'nama': 'Mobil', 'icon': Icons.directions_car_rounded, 'aktif': true},
-    // Contoh jika ada kategori yang ditutup admin:
-    // {'nama': 'Truk', 'icon': Icons.local_shipping, 'aktif': false}, 
   ];
 
-  // Jam Operasional Baru (Sampai 20:00)
+  // Jam Operasional (Sampai 20:00)
   final List<String> _timeSlots = [
     '08:00 - 09:00', '09:00 - 10:00', '10:00 - 11:00',
     '11:00 - 12:00', '13:00 - 14:00', '14:00 - 15:00',
@@ -81,13 +82,87 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     }
   }
 
+  // --- MENGIRIM PESANAN KE API LARAVEL ---
+  Future<void> _submitOrder() async {
+    setState(() => _isSubmitting = true);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userId = prefs.getString('id_user') ?? "";
+
+      if (userId.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sesi login habis, silakan login kembali.')));
+        setState(() => _isSubmitting = false);
+        return;
+      }
+
+      final String apiUrl = 'http://192.168.1.14:8000/api/orders';
+      
+      String tanggalTampil = "${DateFormat('dd MMMM yyyy', 'id_ID').format(_selectedDate)}, $_selectedTime";
+      String layananId = _selectedService?['_id'] ?? _selectedService?['id'] ?? "";
+
+      final response = await http.post(
+        Uri.parse(apiUrl),
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'user_id': userId,
+          'layanan_id': layananId,
+          'kendaraan': _vehicleNameController.text,
+          'plat_nomor': _plateNumberController.text,
+          'tanggal': tanggalTampil,
+          'total_harga': _selectedService?['harga'] ?? 0,
+        }),
+      );
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        
+        // Tangkap ID yang dikembalikan oleh Laravel
+        final String orderId = responseData['data']['_id'] ?? responseData['data']['id'];
+        
+        // Tangkap Kode Pesanan yang di-generate Laravel (contoh: STG-8A9B2C)
+        final String bookingCode = responseData['data']['kode_pesanan'] ?? '-';
+
+        if (mounted) {
+          // Ganti layar ke Waiting Screen, sambil membawa semua data yang dibutuhkan
+          Navigator.pushReplacement(
+            context, 
+            MaterialPageRoute(
+              builder: (_) => BookingWaitingScreen(
+                orderId: orderId,
+                serviceName: "${_selectedService?['nama_layanan']} ($_selectedCategory)",
+                date: tanggalTampil,
+                vehicle: _vehicleNameController.text,
+                plateNumber: _plateNumberController.text,
+                price: "Rp ${_selectedService?['harga'] ?? 0}",
+                bookingCode: bookingCode,
+              )
+            )
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal membuat pesanan. Silakan coba lagi.')));
+      }
+    } catch (e) {
+      debugPrint("Error submit: $e");
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Terjadi kesalahan koneksi jaringan.')));
+    } finally {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+      }
+    }
+  }
+
   // --- PEMILIH TANGGAL ---
   Future<void> _pickDate() async {
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
       firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 14)), // Max 2 minggu
+      lastDate: DateTime.now().add(const Duration(days: 14)),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
@@ -100,13 +175,17 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     if (picked != null) {
       setState(() {
         _selectedDate = picked;
-        _selectedTime = null; // Reset jam jika ganti hari
+        _selectedTime = null; 
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    List<dynamic> displayedServices = _servicesList.where((service) {
+      return service['kategori'] == _selectedCategory;
+    }).toList();
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
@@ -134,14 +213,21 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                     bool isActive = cat['aktif'];
                     return Expanded(
                       child: GestureDetector(
-                        onTap: isActive ? () => setState(() => _selectedCategory = cat['nama']) : null,
+                        onTap: isActive 
+                            ? () {
+                                setState(() {
+                                  _selectedCategory = cat['nama'];
+                                  _selectedService = null; 
+                                });
+                              } 
+                            : null,
                         child: Container(
                           margin: const EdgeInsets.only(right: 10),
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           decoration: BoxDecoration(
                             color: isActive 
                                 ? (isSelected ? const Color(0xFF3B5BDB) : Colors.white) 
-                                : Colors.grey.shade300, // Warna gelap jika tutup
+                                : Colors.grey.shade300,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(color: isSelected ? const Color(0xFF3B5BDB) : Colors.grey.shade300),
                             boxShadow: isActive && !isSelected ? [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 4)] : [],
@@ -164,44 +250,63 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // 2. PILIH LAYANAN (Dinamis dari DB & Responsif)
-                _buildSectionTitle('Pilih Layanan', Icons.local_car_wash_rounded),
+                // 2. PILIH LAYANAN
+                _buildSectionTitle('Pilih Layanan ($_selectedCategory)', Icons.local_car_wash_rounded),
                 const SizedBox(height: 12),
                 _isLoadingServices
                     ? const Center(child: CircularProgressIndicator())
-                    : _servicesList.isEmpty
-                        ? const Text("Tidak ada layanan tersedia saat ini.")
+                    : displayedServices.isEmpty
+                        ? const Text("Layanan untuk kategori ini belum tersedia.", style: TextStyle(color: Colors.grey))
                         : Wrap(
                             spacing: 12,
                             runSpacing: 12,
-                            children: _servicesList.map((service) {
-                              bool isSelected = _selectedService?['id'] == service['id'];
+                            children: displayedServices.map((service) {
                               
-                              // Deteksi status buka/tutup (Sesuaikan dengan nama kolom di database kamu)
-                              // Misalnya kolom 'status' bernilai 'Aktif'
-                              bool isActive = (service['status'] ?? 'Aktif') == 'Aktif';
+                              bool isSelected = _selectedService != null && 
+                                  ((service['_id'] != null && _selectedService!['_id'] == service['_id']) ||
+                                   (service['id'] != null && _selectedService!['id'] == service['id']));
+                              
+                              bool isActive = service['is_active'] ?? true;
 
                               return GestureDetector(
                                 onTap: isActive ? () => setState(() => _selectedService = service) : null,
                                 child: Container(
-                                  width: (MediaQuery.of(context).size.width / 2) - 26, // Responsif 2 kolom
+                                  width: (MediaQuery.of(context).size.width / 2) - 26, 
                                   padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
                                     color: isActive 
                                         ? (isSelected ? const Color(0xFFE8F0FE) : Colors.white)
-                                        : Colors.grey.shade200,
+                                        : Colors.grey.shade200, 
                                     borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: isActive ? (isSelected ? const Color(0xFF3B5BDB) : Colors.grey.shade300) : Colors.grey.shade300),
+                                    border: Border.all(
+                                      color: isActive 
+                                          ? (isSelected ? const Color(0xFF3B5BDB) : Colors.grey.shade300) 
+                                          : Colors.grey.shade300,
+                                      width: isSelected ? 1.5 : 1.0,
+                                    ),
                                   ),
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        service['nama_layanan'] ?? 'Layanan', 
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold, fontSize: 13, 
-                                          color: isActive ? const Color(0xFF1A1A2E) : Colors.grey.shade500
-                                        )
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              service['nama_layanan'] ?? 'Layanan', 
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold, fontSize: 13, 
+                                                color: isActive ? const Color(0xFF1A1A2E) : Colors.grey.shade500
+                                              )
+                                            ),
+                                          ),
+                                          if (!isActive)
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                              decoration: BoxDecoration(color: Colors.grey.shade400, borderRadius: BorderRadius.circular(4)),
+                                              child: const Text('Tutup', style: TextStyle(fontSize: 8, color: Colors.white, fontWeight: FontWeight.bold)),
+                                            )
+                                        ],
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
@@ -219,24 +324,19 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                           ),
                 const SizedBox(height: 24),
 
-                // 3. DETAIL KENDARAAN (Kapital Otomatis & Format Plat)
+                // 3. DETAIL KENDARAAN
                 _buildSectionTitle('Detail Kendaraan', Icons.directions_car_rounded),
                 const SizedBox(height: 12),
-                // Nama Kendaraan
                 TextFormField(
                   controller: _vehicleNameController,
-                  textCapitalization: TextCapitalization.words, // Kapital di awal kata
+                  textCapitalization: TextCapitalization.words, 
                   decoration: _inputStyle('Merek & Tipe (cth: Honda Brio)'),
                 ),
                 const SizedBox(height: 12),
-                // Nomor Polisi
                 TextFormField(
                   controller: _plateNumberController,
-                  textCapitalization: TextCapitalization.characters, // KAPITAL SEMUA
-                  inputFormatters: [
-                    // Otomatis menolak karakter aneh jika perlu, tapi kita buat bebas saja asal kapital
-                    LengthLimitingTextInputFormatter(11), 
-                  ],
+                  textCapitalization: TextCapitalization.characters, 
+                  inputFormatters: [LengthLimitingTextInputFormatter(11)],
                   decoration: _inputStyle('Nomor Polisi (cth: B 1234 XYZ)'),
                 ),
                 const SizedBox(height: 24),
@@ -244,7 +344,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 // 4. WAKTU KEDATANGAN
                 _buildSectionTitle('Waktu Kedatangan', Icons.calendar_month_rounded),
                 const SizedBox(height: 12),
-                // Tombol Pilih Tanggal
                 GestureDetector(
                   onTap: _pickDate,
                   child: Container(
@@ -260,16 +359,14 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                // Grid Jam Operasional
                 Wrap(
                   spacing: 10,
                   runSpacing: 10,
                   children: _timeSlots.map((time) {
                     bool isSelected = _selectedTime == time;
-                    
-                    // Logika jam tutup: Jika hari ini, matikan jam yang sudah lewat
                     bool isPast = false;
-                    if (_selectedDate.day == DateTime.now().day) {
+                    
+                    if (_selectedDate.day == DateTime.now().day && _selectedDate.month == DateTime.now().month && _selectedDate.year == DateTime.now().year) {
                       int jamMulai = int.parse(time.split(':')[0]);
                       if (jamMulai <= DateTime.now().hour) {
                         isPast = true;
@@ -310,6 +407,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                       const Text('Ringkasan Pesanan', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                       const Divider(height: 24),
                       _summaryRow('Layanan', _selectedService?['nama_layanan'] ?? '-'),
+                      _summaryRow('Kategori', _selectedCategory), 
                       _summaryRow('Kendaraan', _vehicleNameController.text.isEmpty ? '-' : _vehicleNameController.text),
                       _summaryRow('Nomor Polisi', _plateNumberController.text.isEmpty ? '-' : _plateNumberController.text),
                       _summaryRow('Jadwal', _selectedTime == null ? '-' : "${DateFormat('dd/MM').format(_selectedDate)}, $_selectedTime"),
@@ -322,15 +420,20 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                         ],
                       ),
                       const SizedBox(height: 16),
-                      // PEMBAYARAN FIX QRIS
+                      // Keterangan Pembayaran
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         decoration: BoxDecoration(color: const Color(0xFFFFF3CD), borderRadius: BorderRadius.circular(8)),
                         child: Row(
                           children: const [
-                            Icon(Icons.qr_code_scanner_rounded, color: Color(0xFFB78103), size: 18),
+                            Icon(Icons.access_time_rounded, color: Color(0xFFB78103), size: 18),
                             SizedBox(width: 8),
-                            Text('Metode Pembayaran: QRIS (Otomatis)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF92400E))),
+                            Expanded(
+                              child: Text(
+                                'Metode Pembayaran: QRIS (Tersedia setelah booking dikonfirmasi Admin)', 
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF92400E)),
+                              ),
+                            ),
                           ],
                         ),
                       )
@@ -350,31 +453,18 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             ),
             child: SafeArea(
               child: ElevatedButton(
-                onPressed: (_selectedCategory == null || _selectedService == null || _vehicleNameController.text.isEmpty || _plateNumberController.text.isEmpty || _selectedTime == null)
+                onPressed: (_selectedService == null || _vehicleNameController.text.isEmpty || _plateNumberController.text.isEmpty || _selectedTime == null || _isSubmitting)
                     ? null
-                    : () {
-                        // MENGIRIM DATA KE HALAMAN WAITING SCREEN
-                        Navigator.pushReplacement(
-                          context, 
-                          MaterialPageRoute(
-                            builder: (_) => BookingWaitingScreen(
-                              serviceName: _selectedService?['nama_layanan'] ?? 'Layanan',
-                              date: "${DateFormat('dd MMMM yyyy', 'id_ID').format(_selectedDate)}, $_selectedTime",
-                              vehicle: _vehicleNameController.text,
-                              plateNumber: _plateNumberController.text,
-                              slot: '-', // Karena baru booking, belum dapat nomor antrian
-                              price: "Rp ${_selectedService?['harga'] ?? 0}",
-                            )
-                          )
-                        );
-                      },
+                    : _submitOrder, 
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF3B5BDB),
                   disabledBackgroundColor: Colors.grey.shade300,
                   minimumSize: const Size(double.infinity, 50),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                child: const Text('Konfirmasi & Buat Pesanan', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+                child: _isSubmitting 
+                    ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : const Text('Konfirmasi & Buat Pesanan', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
               ),
             ),
           ),
@@ -383,7 +473,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     );
   }
 
-  // Helper Widget Judul Section
+  // Helper Widget
   Widget _buildSectionTitle(String title, IconData icon) {
     return Row(
       children: [
@@ -394,7 +484,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     );
   }
 
-  // Helper Widget Input Form
   InputDecoration _inputStyle(String hint) {
     return InputDecoration(
       hintText: hint,
@@ -407,7 +496,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     );
   }
 
-  // Helper Widget Baris Ringkasan
   Widget _summaryRow(String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
