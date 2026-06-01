@@ -64,7 +64,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
 
   // --- MENGAMBIL LAYANAN DARI API LARAVEL ---
   Future<void> _fetchServices() async {
-    final String apiUrl = 'http://192.168.1.14:8000/api/services';
+    final String apiUrl = 'http://192.168.100.36:8000/api/services';
     try {
       final response = await http.get(Uri.parse(apiUrl));
       if (response.statusCode == 200) {
@@ -96,7 +96,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         return;
       }
 
-      final String apiUrl = 'http://192.168.1.14:8000/api/orders';
+      final String apiUrl = 'http://192.168.100.36:8000/api/orders';
       
       String tanggalTampil = "${DateFormat('dd MMMM yyyy', 'id_ID').format(_selectedDate)}, $_selectedTime";
       String layananId = _selectedService?['_id'] ?? _selectedService?['id'] ?? "";

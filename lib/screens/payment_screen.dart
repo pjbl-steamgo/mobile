@@ -52,7 +52,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       var request = http.MultipartRequest(
         'POST',
         // Ganti IP ini dengan IP komputermu saat ini jika berubah
-        Uri.parse('http://192.168.1.14:8000/api/orders/${widget.orderId}/payment'),
+        Uri.parse('http://192.168.100.36:8000/api/orders/${widget.orderId}/payment'),
       );
       
       request.files.add(await http.MultipartFile.fromPath('bukti_pembayaran', _image!.path));

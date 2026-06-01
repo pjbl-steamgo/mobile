@@ -93,7 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _fetchActiveOrders(String userId) async {
-    final String apiUrl = 'http://192.168.1.14:8000/api/order-history?user_id=$userId';
+    final String apiUrl = 'http://192.168.100.36:8000/api/order-history?user_id=$userId';
     setState(() => _isLoadingOrder = true);
 
     try {
@@ -132,7 +132,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _isLoadingJam = true);
     try {
       final response = await http.get(
-        Uri.parse('http://192.168.1.14:8000/api/jam-operasional'),
+        Uri.parse('http://192.168.100.36:8000/api/jam-operasional'),
         headers: {'Accept': 'application/json'}
       );
 

@@ -58,7 +58,7 @@ class _BookingWaitingScreenState extends State<BookingWaitingScreen> {
       }
 
       try {
-        final response = await http.get(Uri.parse('http://192.168.1.14:8000/api/orders/status/${widget.orderId}'));
+        final response = await http.get(Uri.parse('http://192.168.100.36:8000/api/orders/status/${widget.orderId}'));
         
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body);

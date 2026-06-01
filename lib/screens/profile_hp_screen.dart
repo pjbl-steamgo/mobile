@@ -3,6 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+import '../config/api_config.dart'; // IMPORT CLEAN CODE
+
 class ProfileHpScreen extends StatefulWidget {
   final String currentHp;
   const ProfileHpScreen({super.key, required this.currentHp});
@@ -30,7 +32,7 @@ class _ProfileHpScreenState extends State<ProfileHpScreen> {
       final idUser = prefs.getString('id_user') ?? "";
 
       final response = await http.put(
-        Uri.parse('http://192.168.1.14:8000/api/user/$idUser'),
+        Uri.parse('${ApiConfig.baseUrl}/user/$idUser'), // CLEAN CODE
         headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
         body: jsonEncode({'no_hp': _controller.text.trim()}),
       );

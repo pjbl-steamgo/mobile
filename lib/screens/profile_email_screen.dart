@@ -3,6 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+import '../config/api_config.dart'; // IMPORT CLEAN CODE
+
 class ProfileEmailScreen extends StatefulWidget {
   final String currentEmail;
   const ProfileEmailScreen({super.key, required this.currentEmail});
@@ -33,7 +35,7 @@ class _ProfileEmailScreenState extends State<ProfileEmailScreen> {
       final idUser = prefs.getString('id_user') ?? "";
 
       final response = await http.put(
-        Uri.parse('http://192.168.1.14:8000/api/user/$idUser'),
+        Uri.parse('${ApiConfig.baseUrl}/user/$idUser'), // CLEAN CODE
         headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
         body: jsonEncode({'email': _controller.text.trim()}),
       );

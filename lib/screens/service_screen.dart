@@ -31,7 +31,7 @@ class _ServiceScreenState extends State<ServiceScreen> {
 
     try {
       // Ganti IP jika diperlukan
-      final response = await http.get(Uri.parse('http://192.168.1.14:8000/api/layanan'));
+      final response = await http.get(Uri.parse('http://192.168.100.36:8000/api/layanan'));
       
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);

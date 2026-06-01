@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-
-// Pastikan kamu mengimpor 3 file layar edit yang baru dibuat
+import '../config/api_config.dart';
 import 'profile_username_screen.dart';
 import 'profile_hp_screen.dart';
 import 'profile_email_screen.dart';
+import 'profile_password_screen.dart';
+import 'profile_faq_screen.dart';
+import 'profile_sk_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -49,10 +51,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return;
       }
 
-      // 1. Tarik Data Profil User
-      final String apiUser = 'http://192.168.1.14:8000/api/user/$idUser';
-      // 2. Tarik Data Riwayat Pesanan untuk Kalkulasi Statistik
-      final String apiOrder = 'http://192.168.1.14:8000/api/order-history?user_id=$idUser';
+      // MENGGUNAKAN API CONFIG (CLEAN CODE)
+      final String apiUser = '${ApiConfig.baseUrl}/user/$idUser';
+      final String apiOrder = '${ApiConfig.baseUrl}/order-history?user_id=$idUser';
 
       // Eksekusi dua API sekaligus agar lebih cepat
       final responses = await Future.wait([
@@ -231,19 +232,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                     _buildSectionTitle('Keamanan'),
                     const SizedBox(height: 8),
-                    _buildMenuCard(items: const [
+                    _buildMenuCard(items: [
                       _MenuItem(
                         icon: Icons.lock_outline_rounded,
-                        iconColor: Color(0xFFF59F00),
-                        iconBg: Color(0xFFFFF3CD),
+                        iconColor: const Color(0xFFF59F00),
+                        iconBg: const Color(0xFFFFF3CD),
                         label: 'Kata sandi',
-                      ),
-                      _MenuItem(
-                        icon: Icons.history_rounded,
-                        iconColor: Color(0xFFF59F00),
-                        iconBg: Color(0xFFFFF3CD),
-                        label: 'Riwayat Perangkat',
                         isLast: true,
+                        onTap: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfilePasswordScreen()));
+                        },
                       ),
                     ]),
 
@@ -252,17 +250,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     _buildSectionTitle('Lainnya'),
                     const SizedBox(height: 8),
                     _buildMenuCard(items: [
-                      const _MenuItem(
+                      _MenuItem(
                         icon: Icons.help_outline_rounded,
-                        iconColor: Color(0xFF3B5BDB),
-                        iconBg: Color(0xFFE8F0FE),
+                        iconColor: const Color(0xFF3B5BDB),
+                        iconBg: const Color(0xFFE8F0FE),
                         label: 'Bantuan & FAQ',
+                        onTap: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileFaqScreen()));
+                        },
                       ),
-                      const _MenuItem(
+                      _MenuItem(
                         icon: Icons.description_outlined,
-                        iconColor: Color(0xFFE53935),
-                        iconBg: Color(0xFFFFEBEE),
+                        iconColor: const Color(0xFFE53935),
+                        iconBg: const Color(0xFFFFEBEE),
                         label: 'Syarat & Ketentuan',
+                        onTap: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileSkScreen()));
+                        },
                       ),
                       _MenuItem(
                         icon: Icons.logout_rounded,
@@ -291,6 +295,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     Color bgBadge = _getBadgeBgColor();
     Color textBadge = _getBadgeTextColor();
     String iconBadge = _getBadgeIcon();
+
+    // Otomatis menyesuaikan URL gambar dari ApiConfig (Membersihkan path '/api' jadi '/storage')
+    String storageUrl = ApiConfig.baseUrl.replaceAll('/api', '/storage');
 
     return Container(
       width: double.infinity,
@@ -338,7 +345,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: ClipOval(
                       child: _fotoProfil != null
                         ? Image.network(
-                            'http://192.168.1.14:8000/storage/$_fotoProfil',
+                            '$storageUrl/$_fotoProfil', // <-- URL DINAMIS MENGGUNAKAN APICONFIG
                             fit: BoxFit.cover,
                             errorBuilder: (context, error, stackTrace) {
                               return const Icon(Icons.person_rounded, size: 52, color: Color(0xFF1A237E));
@@ -632,7 +639,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Navigator.pop(context);
               final prefs = await SharedPreferences.getInstance();
               await prefs.clear();
-              // Arahkan ke halaman login di sini jika ada (menggunakan pushAndRemoveUntil)
+              // Arahkan ke halaman login jika diperlukan
             },
             child: const Text('Keluar', style: TextStyle(color: Color(0xFFE53935), fontWeight: FontWeight.bold)),
           ),

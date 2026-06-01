@@ -178,7 +178,7 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
        - Jika pakai Emulator Android: gunakan 10.0.2.2
        - Jika pakai HP Asli (Fisik) : gunakan IP WiFi laptopmu (contoh: 192.168.1.5)
       */
-      const String apiUrl = 'http://192.168.1.14:8000/api/login'; 
+      const String apiUrl = 'http://192.168.100.36:8000/api/login'; 
 
       final response = await http.post(
         Uri.parse(apiUrl),

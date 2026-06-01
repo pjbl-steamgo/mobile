@@ -58,7 +58,7 @@ class _OrderScreenState extends State<OrderScreen> {
       }
 
       // Pastikan IP sesuai dengan server Laravel kamu
-      final String apiUrl = 'http://192.168.1.14:8000/api/order-history?user_id=$idUser';
+      final String apiUrl = 'http://192.168.100.36:8000/api/order-history?user_id=$idUser';
 
       final response = await http.get(
         Uri.parse(apiUrl),
