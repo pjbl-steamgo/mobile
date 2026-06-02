@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
+import '../config/api_service.dart'; // ── IMPORT CLEAN CODE API ──
 import 'payment_confirmed_screen.dart';
 
 class PaymentWaitingScreen extends StatefulWidget {
@@ -33,6 +33,7 @@ class _PaymentWaitingScreenState extends State<PaymentWaitingScreen> {
     super.dispose();
   }
 
+  // ── PENGECEKAN STATUS MENGGUNAKAN API SERVICE ──
   void _startPolling() {
     _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       if (_isDisposed) {
@@ -41,8 +42,9 @@ class _PaymentWaitingScreenState extends State<PaymentWaitingScreen> {
       }
 
       try {
-        final response = await http.get(Uri.parse('http://192.168.100.36:8000/api/orders/status/${widget.orderId}'));
-        if (response.statusCode == 200) {
+        final response = await ApiService.get('/orders/status/${widget.orderId}');
+        
+        if (response != null && response.statusCode == 200) {
           final data = jsonDecode(response.body);
           if (data['success'] == true) {
             String status = data['status'];
@@ -79,11 +81,10 @@ class _PaymentWaitingScreenState extends State<PaymentWaitingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // WillPopScope mematikan timer saat user menekan back di HP
     return WillPopScope(
       onWillPop: () async {
         _pollingTimer?.cancel();
-        return true; // Mengizinkan user untuk back
+        return true; 
       },
       child: Scaffold(
         backgroundColor: Colors.white,
@@ -112,7 +113,6 @@ class _PaymentWaitingScreenState extends State<PaymentWaitingScreen> {
               ),
               const SizedBox(height: 40),
               
-              // Tambahan box info agar user tahu ini aman untuk di-back
               Container(
                 margin: const EdgeInsets.symmetric(horizontal: 40),
                 padding: const EdgeInsets.all(12),

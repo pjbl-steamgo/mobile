@@ -1,14 +1,13 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:http/http.dart' as http;
+import '../config/api_service.dart'; // ── IMPORT CLEAN CODE API ──
 import 'payment_waiting_screen.dart';
 
 class PaymentScreen extends StatefulWidget {
   final String orderId;
   final String price;
   
-  // Data ini di-passing agar nanti bisa diteruskan secara utuh sampai ke OrderDetailScreen
   final String serviceName;
   final String date;
   final String vehicle;
@@ -35,7 +34,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
   bool _isUploading = false;
   final ImagePicker _picker = ImagePicker();
 
-  // Fungsi untuk memilih gambar dari galeri HP
   Future<void> _pickImage() async {
     final XFile? pickedFile = await _picker.pickImage(source: ImageSource.gallery);
     if (pickedFile != null) {
@@ -43,25 +41,22 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
   }
 
-  // Fungsi untuk mengirim gambar bukti pembayaran ke API Laravel
+  // ── PENGIRIMAN GAMBAR MENGGUNAKAN API SERVICE MULTIPART ──
   Future<void> _uploadPayment() async {
     if (_image == null) return;
     setState(() => _isUploading = true);
 
     try {
-      var request = http.MultipartRequest(
-        'POST',
-        // Ganti IP ini dengan IP komputermu saat ini jika berubah
-        Uri.parse('http://192.168.100.36:8000/api/orders/${widget.orderId}/payment'),
+      final response = await ApiService.multipartPost(
+        '/orders/${widget.orderId}/payment',
+        {}, // Tidak ada text field tambahan
+        filePath: _image!.path,
+        fileField: 'bukti_pembayaran' // Nama key field file gambar di Laravel
       );
-      
-      request.files.add(await http.MultipartFile.fromPath('bukti_pembayaran', _image!.path));
-      var response = await request.send();
 
-      if (response.statusCode == 200) {
+      if (response != null && response.statusCode == 200) {
         if (!mounted) return;
         
-        // Pindah ke layar menungggu konfirmasi pembayaran dari admin
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => PaymentWaitingScreen(
@@ -74,7 +69,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             bookingCode: widget.bookingCode,
           )),
         );
-      } else {
+      } else if (response != null) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Gagal mengunggah bukti pembayaran.")));
       }
     } catch (e) {
@@ -92,7 +87,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
         title: const Text('Pembayaran', style: TextStyle(color: Colors.black, fontSize: 16)), 
         backgroundColor: Colors.white, 
         elevation: 0,
-        // Tombol Back agar user bisa keluar kapan saja ke halaman sebelumnya/Riwayat Pesanan
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.black),
           onPressed: () => Navigator.pop(context),
@@ -102,7 +96,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            // Container Gambar QRIS Statis
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -117,7 +110,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   const Text('Scan QRIS untuk Membayar', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                   const SizedBox(height: 16),
                   
-                  // Pastikan gambar QRIS ini ada di folder assets kamu
                   Image.asset('assets/images/qris.jpg', height: 250), 
                   
                   const SizedBox(height: 16),
@@ -129,7 +121,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
             ),
             const SizedBox(height: 24),
 
-            // Form Upload Bukti Transfer
             GestureDetector(
               onTap: _pickImage,
               child: Container(
@@ -141,12 +132,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: _image != null
-                    // Tampilkan gambar yang dipilih dari galeri
                     ? ClipRRect(
                         borderRadius: BorderRadius.circular(12), 
                         child: Image.file(_image!, fit: BoxFit.cover)
                       )
-                    // Tampilan default sebelum memilih gambar
                     : Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: const [
@@ -163,7 +152,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
             ),
             const SizedBox(height: 32),
 
-            // Tombol Konfirmasi & Kirim Bukti
             ElevatedButton(
               onPressed: (_image == null || _isUploading) ? null : _uploadPayment,
               style: ElevatedButton.styleFrom(

@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 
-import '../config/api_config.dart'; // IMPORT CLEAN CODE
+import '../config/api_service.dart'; // ── IMPORT CLEAN CODE API ──
 
 class ProfilePasswordScreen extends StatefulWidget {
   const ProfilePasswordScreen({super.key});
@@ -42,24 +41,24 @@ class _ProfilePasswordScreenState extends State<ProfilePasswordScreen> {
       final prefs = await SharedPreferences.getInstance();
       final idUser = prefs.getString('id_user') ?? "";
 
-      final response = await http.put(
-        Uri.parse('${ApiConfig.baseUrl}/user/$idUser/password'), // CLEAN CODE
-        headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
-        body: jsonEncode({
-          'password_baru': _newPasswordCtrl.text,
-          'password_baru_confirmation': _confirmPasswordCtrl.text,
-        }),
-      );
+      // ── PANGGILAN API PUT CLEAN CODE ──
+      final response = await ApiService.put('/user/$idUser/password', {
+        'password_baru': _newPasswordCtrl.text,
+        'password_baru_confirmation': _confirmPasswordCtrl.text,
+      });
 
-      final resData = jsonDecode(response.body);
-
-      if (response.statusCode == 200 && resData['success'] == true) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kata sandi berhasil diubah!'), backgroundColor: Colors.green));
-          Navigator.pop(context);
+      if (response != null && response.statusCode == 200) {
+        final resData = jsonDecode(response.body);
+        if (resData['success'] == true) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kata sandi berhasil diubah!'), backgroundColor: Colors.green));
+            Navigator.pop(context);
+          }
+        } else {
+          _showError(resData['message'] ?? 'Gagal mengubah kata sandi');
         }
-      } else {
-        _showError(resData['message'] ?? 'Gagal mengubah kata sandi');
+      } else if (response != null) {
+         _showError('Gagal mengubah kata sandi');
       }
     } catch (e) {
       _showError('Terjadi kesalahan koneksi');

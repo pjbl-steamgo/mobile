@@ -4,11 +4,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
 
-import '../config/api_config.dart'; // IMPORT CLEAN CODE API
+import '../config/api_service.dart'; // ── IMPORT CLEAN CODE API ──
+import '../config/api_config.dart'; // Dibutuhkan untuk mem-parsing URL Gambar
 
-// ── Model Data Diperbarui ──
 class ChatMessage {
   final String id;
   final String? text;
@@ -61,14 +60,16 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  // ── 1. INISIALISASI & FETCH DARI DATABASE ─────────────────────────────────
   Future<void> _initChat() async {
     final prefs = await SharedPreferences.getInstance();
     _idUser = prefs.getString('id_user') ?? "";
 
     if (_idUser.isNotEmpty) {
+      // Reset is_resolved dulu saat user membuka chat
+      await ApiService.post('/chat/$_idUser/reopen', {});
+
       await _fetchMessages();
-      
+
       _pollingTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
         _fetchMessages();
       });
@@ -77,59 +78,71 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _fetchMessages() async {
-    try {
-      final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/chat/$_idUser'));
+  // ── MENGAMBIL PESAN DENGAN API SERVICE ──
+Future<void> _fetchMessages() async {
+  try {
+    final response = await ApiService.get('/chat/$_idUser');
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['success'] == true) {
-          List<dynamic> apiMessages = data['data'];
-          List<ChatMessage> parsedMessages = [];
+    if (response != null && response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      if (data['success'] == true) {
 
-          String storageUrl = ApiConfig.baseUrl.replaceAll('/api', '/storage');
-
-          for (var msg in apiMessages) {
-            String? imgPath;
-            if (msg['image'] != null && msg['image'].toString().isNotEmpty) {
-              imgPath = '$storageUrl/${msg['image']}'; 
-            }
-
-            parsedMessages.add(ChatMessage(
-              id: msg['_id'] ?? msg['id'] ?? '',
-              text: msg['message'],
-              imagePath: imgPath,
-              replyToText: msg['reply_to_text'],
-              isUser: msg['sender'] == 'user',
-              time: DateTime.parse(msg['created_at']).toLocal(),
-            ));
-          }
-
-          if (parsedMessages.length != _messages.length && mounted) {
+        // ── Jika admin sudah tandai selesai, kosongkan riwayat chat ──
+        if (data['is_resolved'] == true) {
+          if (mounted) {
             setState(() {
-              _messages = parsedMessages;
+              _messages = [];
               _isLoading = false;
             });
-            _scrollToBottom();
-          } else if (_isLoading && mounted) {
-            setState(() => _isLoading = false);
           }
+          return;
+        }
+
+        List<dynamic> apiMessages = data['data'];
+        List<ChatMessage> parsedMessages = [];
+
+        String storageUrl = ApiConfig.baseUrl.replaceAll('/api', '/storage');
+
+        for (var msg in apiMessages) {
+          String? imgPath;
+          if (msg['image'] != null && msg['image'].toString().isNotEmpty) {
+            imgPath = '$storageUrl/${msg['image']}';
+          }
+
+          parsedMessages.add(ChatMessage(
+            id: msg['_id'] ?? msg['id'] ?? '',
+            text: msg['message'],
+            imagePath: imgPath,
+            replyToText: msg['reply_to_text'],
+            isUser: msg['sender'] == 'user',
+            time: DateTime.parse(msg['created_at']).toLocal(),
+          ));
+        }
+
+        if (parsedMessages.length != _messages.length && mounted) {
+          setState(() {
+            _messages = parsedMessages;
+            _isLoading = false;
+          });
+          _scrollToBottom();
+        } else if (_isLoading && mounted) {
+          setState(() => _isLoading = false);
         }
       }
-    } catch (e) {
-      debugPrint("Gagal memuat pesan: $e");
     }
+  } catch (e) {
+    debugPrint("Gagal memuat pesan: $e");
   }
+}
 
-  // ── 2. MENGIRIM PESAN (TEKS & GAMBAR BERSAMAAN) ──────────────────────────
+  // ── MENGIRIM PESAN MULTIPART DENGAN API SERVICE ──
   Future<void> _sendMessage({String? text, String? imagePath}) async {
     final msgText = text ?? _controller.text.trim();
     if (msgText.isEmpty && imagePath == null) return;
 
-    // Optimistic UI: Menampilkan Teks & Gambar sekaligus di HP
     final newMsg = ChatMessage(
       id: 'temp_${DateTime.now().millisecondsSinceEpoch}',
-      text: msgText.isNotEmpty ? msgText : null, // PERBAIKAN: Teks tidak lagi dikosongkan jika ada gambar
+      text: msgText.isNotEmpty ? msgText : null, 
       imagePath: imagePath,
       replyToText: _replyingTo?.text ?? (_replyingTo?.imagePath != null ? 'Gambar' : null),
       isUser: true,
@@ -145,21 +158,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (_idUser.isNotEmpty) {
       try {
-        var request = http.MultipartRequest('POST', Uri.parse('${ApiConfig.baseUrl}/chat/$_idUser'));
-        request.headers['Accept'] = 'application/json';
-        
-        if (msgText.isNotEmpty) {
-          request.fields['message'] = msgText;
-        }
-        if (newMsg.replyToText != null) {
-          request.fields['reply_to_text'] = newMsg.replyToText!;
-        }
-        if (imagePath != null) {
-          request.files.add(await http.MultipartFile.fromPath('image', imagePath));
-        }
+        Map<String, String> fields = {};
+        if (msgText.isNotEmpty) fields['message'] = msgText;
+        if (newMsg.replyToText != null) fields['reply_to_text'] = newMsg.replyToText!;
 
-        var response = await request.send();
-        if (response.statusCode == 201 || response.statusCode == 200) {
+        final response = await ApiService.multipartPost('/chat/$_idUser', fields, filePath: imagePath);
+
+        if (response != null && (response.statusCode == 201 || response.statusCode == 200)) {
           _fetchMessages(); 
         }
       } catch (e) {
@@ -168,11 +173,12 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  // ── 3. HAPUS PESAN DARI SERVER ──────────────────────────────────────────
+  // ── HAPUS PESAN DENGAN API SERVICE ──
   Future<void> _deleteMessage(ChatMessage msg) async {
     try {
-      final response = await http.delete(Uri.parse('${ApiConfig.baseUrl}/chat/message/${msg.id}'));
-      if (response.statusCode == 200) {
+      final response = await ApiService.delete('/chat/message/${msg.id}');
+      
+      if (response != null && response.statusCode == 200) {
         _fetchMessages(); 
       }
     } catch (e) {
@@ -408,7 +414,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // ── Date divider ──────────────────────────────────────────────────────────
   Widget _buildDateDivider(DateTime time) {
     const months = ['', 'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
     return Padding(
@@ -426,7 +431,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // ── Chat bubble (Diperbarui untuk mendukung Teks + Gambar) ───────────────────
   Widget _buildBubble(ChatMessage msg) {
     final isUser = msg.isUser;
 
@@ -483,7 +487,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                     
                   Container(
-                    // PERBAIKAN PADDING: Berikan ruang lebih jika ada teks dan gambar
                     padding: (msg.imagePath != null && (msg.text == null || msg.text!.isEmpty))
                         ? const EdgeInsets.all(4)
                         : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -497,7 +500,6 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                       boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6, offset: const Offset(0, 2))],
                     ),
-                    // PERBAIKAN: Gunakan Column agar Gambar dan Teks bertumpuk
                     child: msg.isDeleted
                         ? Row(
                             mainAxisSize: MainAxisSize.min,
@@ -513,7 +515,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               if (imageWidget != null)
                                 Padding(
                                   padding: (msg.text != null && msg.text!.isNotEmpty)
-                                      ? const EdgeInsets.only(bottom: 8) // Jarak antara gambar dan teks
+                                      ? const EdgeInsets.only(bottom: 8) 
                                       : EdgeInsets.zero,
                                   child: GestureDetector(
                                     onTap: () => _showImageViewer(context, msg.imagePath!),
@@ -546,7 +548,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // ── Image viewer ─────────────────────────────────────────────────────────
   void _showImageViewer(BuildContext context, String imagePath) {
     Navigator.push(
       context,
@@ -559,7 +560,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // ── Long press options ────────────────────────────────────────────────────
   void _showMessageOptions(ChatMessage msg) {
     if (msg.isDeleted) return;
 
@@ -639,7 +639,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
-// ── Full screen image viewer ──────────────────────────────────────────────────
 class _ImageViewerScreen extends StatefulWidget {
   final String imagePath;
   const _ImageViewerScreen({required this.imagePath});

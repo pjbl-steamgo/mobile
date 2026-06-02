@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'chat_screen.dart'; 
+import '../config/api_service.dart'; // ── IMPORT CLEAN CODE API ──
 
 class OrderDetailScreen extends StatefulWidget {
   final String orderId; 
@@ -60,12 +60,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with SingleTicker
     _startPolling();
   }
 
+  // ── PANGGILAN API MENGGUNAKAN API SERVICE ──
   void _startPolling() {
     _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       try {
-        final response = await http.get(Uri.parse('http://192.168.100.36:8000/api/orders/status/${widget.orderId}'));
+        final response = await ApiService.get('/orders/status/${widget.orderId}');
         
-        if (response.statusCode == 200) {
+        if (response != null && response.statusCode == 200) {
           final data = jsonDecode(response.body);
           if (data['success'] == true && data['status'] != null) {
             
@@ -312,10 +313,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> with SingleTicker
           _row('Layanan', widget.serviceName, bold: true), _div(),
           _row('Tanggal', widget.date), _div(),
           _row('Kendaraan', '${widget.vehicle} (${widget.plateNumber})'), _div(),
-          
-          // PERBAIKAN MUTLAK: Teks Estimasi murni mengambil dari database tanpa diubah
           _row('Estimasi', widget.estimasiWaktu, valueColor: const Color(0xFF3B5BDB)), _div(),
-          
           _row('Pembayaran', 'QRIS'), _div(),
           _row('Total', widget.price, valueColor: const Color(0xFF3B5BDB), bold: true, fontSize: 15),
         ],

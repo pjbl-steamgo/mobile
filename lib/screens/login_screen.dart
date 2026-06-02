@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
-import 'dart:convert'; // Untuk encode/decode JSON
-import 'package:http/http.dart' as http; // Untuk panggil API
-import 'package:shared_preferences/shared_preferences.dart'; // Untuk simpan sesi user
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'register_screen.dart';
 import 'main_screen.dart';
+import 'login_reset_screen.dart';
 
 class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
@@ -13,7 +14,7 @@ class LoginScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      body: SafeArea( 
+      body: SafeArea(
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -28,10 +29,10 @@ class LoginScreen extends StatelessWidget {
                 child: Stack(
                   children: [
                     Container(
-                      height: 220, 
+                      height: 220,
                       width: double.infinity,
                       decoration: const BoxDecoration(
-                        color: Color(0xFFEDF2F7), 
+                        color: Color(0xFFEDF2F7),
                         image: DecorationImage(
                           image: AssetImage('assets/images/login.png'),
                           fit: BoxFit.cover,
@@ -44,12 +45,12 @@ class LoginScreen extends StatelessWidget {
                       right: 0,
                       child: Center(
                         child: Container(
-                          width: 120, 
-                          height: 120, 
+                          width: 120,
+                          height: 120,
                           decoration: BoxDecoration(
                             color: Colors.white,
                             shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 4), 
+                            border: Border.all(color: Colors.white, width: 4),
                             boxShadow: [
                               BoxShadow(
                                 color: Colors.black.withOpacity(0.08),
@@ -134,7 +135,7 @@ class LoginScreen extends StatelessWidget {
                 padding: EdgeInsets.symmetric(horizontal: 24.0),
                 child: LoginFormWidget(),
               ),
-              
+
               const SizedBox(height: 40),
             ],
           ),
@@ -158,27 +159,22 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _identifierController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  
+
   bool _isPasswordVisible = false;
-  bool _isLoading = false; // <-- Variabel baru untuk status loading
+  bool _isLoading = false;
 
   // FUNGSI UNTUK MEMANGGIL API LOGIN LARAVEL
   Future<void> _loginProses() async {
-    // Tutup keyboard saat tombol ditekan
     FocusScope.of(context).unfocus();
 
     if (!_formKey.currentState!.validate()) return;
 
     setState(() {
-      _isLoading = true; // Nyalakan animasi loading
+      _isLoading = true;
     });
 
     try {
-      /* PENTING TENTANG IP ADDRESS:
-       - Jika pakai Emulator Android: gunakan 10.0.2.2
-       - Jika pakai HP Asli (Fisik) : gunakan IP WiFi laptopmu (contoh: 192.168.1.5)
-      */
-      const String apiUrl = 'http://192.168.100.36:8000/api/login'; 
+      const String apiUrl = 'http://192.168.100.36:8000/api/login';
 
       final response = await http.post(
         Uri.parse(apiUrl),
@@ -195,15 +191,19 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
       final responseData = jsonDecode(response.body);
 
       if (response.statusCode == 200 && responseData['success'] == true) {
-        // 1. Jika Login Sukses: Simpan data ke SharedPreferences
+
+        final String token = responseData['token'];
+        final Map<String, dynamic> userData = responseData['user'];
+
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('id_user', responseData['data']['id_user']);
-        await prefs.setString('username', responseData['data']['username']);
-        await prefs.setString('no_hp', responseData['data']['no_hp']);
-        await prefs.setString('email', responseData['data']['email']);
+
+        await prefs.setString('token', token);
+        await prefs.setString('id_user', userData['id_user']?.toString() ?? '');
+        await prefs.setString('username', userData['username']?.toString() ?? '');
+        await prefs.setString('no_hp', userData['no_hp']?.toString() ?? '');
+        await prefs.setString('email', userData['email']?.toString() ?? '');
         await prefs.setBool('is_logged_in', true);
 
-        // 2. Tampilkan pesan sukses
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -213,18 +213,16 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
             ),
           );
 
-          // 3. Pindah ke Main Screen
           Navigator.pushReplacement(
             context,
             PageRouteBuilder(
-              pageBuilder: (context, animation1, animation2) => MainScreen(),
+              pageBuilder: (context, animation1, animation2) => const MainScreen(),
               transitionDuration: Duration.zero,
               reverseTransitionDuration: Duration.zero,
             ),
           );
         }
       } else {
-        // Jika Login Gagal (Password salah / akun tidak ada)
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -236,7 +234,6 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
         }
       }
     } catch (e) {
-      // Jika server Laravel mati atau IP salah
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -249,7 +246,7 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
     } finally {
       if (mounted) {
         setState(() {
-          _isLoading = false; // Matikan animasi loading
+          _isLoading = false;
         });
       }
     }
@@ -269,14 +266,12 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Label Kolom Identitas
           const Text(
-            'No. HP / Email', 
+            'No. HP / Email',
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
           ),
           const SizedBox(height: 8),
-          
-          // Input No. HP / Email
+
           TextFormField(
             controller: _identifierController,
             keyboardType: TextInputType.text,
@@ -292,11 +287,11 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
               prefixIcon: const Icon(Icons.phone_android_rounded, color: Colors.grey),
               contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
               enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12), 
+                borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(color: Colors.grey.shade300),
               ),
               focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12), 
+                borderRadius: BorderRadius.circular(12),
                 borderSide: const BorderSide(color: Colors.blueAccent, width: 2),
               ),
               errorBorder: OutlineInputBorder(
@@ -310,15 +305,13 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
             ),
           ),
           const SizedBox(height: 20),
-          
-          // Label Kolom Password
+
           const Text(
-            'Password', 
+            'Password',
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
           ),
           const SizedBox(height: 8),
-          
-          // Input Password
+
           TextFormField(
             controller: _passwordController,
             obscureText: !_isPasswordVisible,
@@ -334,7 +327,7 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
               prefixIcon: const Icon(Icons.lock_outline_rounded, color: Colors.grey),
               suffixIcon: IconButton(
                 icon: Icon(
-                  _isPasswordVisible ? Icons.visibility_rounded : Icons.visibility_off_rounded, 
+                  _isPasswordVisible ? Icons.visibility_rounded : Icons.visibility_off_rounded,
                   color: Colors.grey,
                 ),
                 onPressed: () {
@@ -345,11 +338,11 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
               ),
               contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
               enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12), 
+                borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(color: Colors.grey.shade300),
               ),
               focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12), 
+                borderRadius: BorderRadius.circular(12),
                 borderSide: const BorderSide(color: Colors.blueAccent, width: 2),
               ),
               errorBorder: OutlineInputBorder(
@@ -363,34 +356,40 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
             ),
           ),
           const SizedBox(height: 8),
-          
-          // Tombol Lupa Password (Rata Kanan)
+
+          // ── TOMBOL LUPA PASSWORD — LANGSUNG NAVIGASI TANPA VALIDASI ──
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-              onPressed: () {},
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const LoginResetScreen(),
+                  ),
+                );
+              },
               style: TextButton.styleFrom(
                 padding: EdgeInsets.zero,
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
               child: const Text(
-                'Lupa password?', 
+                'Lupa password?',
                 style: TextStyle(color: Colors.blueAccent, fontSize: 14, fontWeight: FontWeight.w600),
               ),
             ),
           ),
           const SizedBox(height: 32),
-          
-          // Tombol Utama Masuk (Dengan Animasi Loading)
+
           SizedBox(
             width: double.infinity,
             height: 52,
             child: ElevatedButton(
-              onPressed: _isLoading ? null : _loginProses, // Kunci tombol saat loading
+              onPressed: _isLoading ? null : _loginProses,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blueAccent, 
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), 
+                backgroundColor: Colors.blueAccent,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 elevation: 0,
               ),
               child: _isLoading
@@ -403,7 +402,7 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
                       ),
                     )
                   : const Text(
-                      'Masuk', 
+                      'Masuk',
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                     ),
             ),

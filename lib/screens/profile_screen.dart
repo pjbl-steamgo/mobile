@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+
+import '../config/api_service.dart'; 
 import '../config/api_config.dart';
 import 'profile_username_screen.dart';
 import 'profile_hp_screen.dart';
 import 'profile_email_screen.dart';
 import 'profile_password_screen.dart';
-import 'profile_faq_screen.dart';
-import 'profile_sk_screen.dart';
+import 'profile_foto_screen.dart'; 
+import 'login_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -20,17 +21,17 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _isLoading = true;
   
-  // Variabel untuk menampung data profil dari database
   String _username = "Memuat...";
   String _phone = "-";
   String _email = "-";
   String _member = "Silver";
   String? _fotoProfil; 
 
-  // Variabel untuk Statistik
   String _totalPesanan = "-";
   String _rating = "-";
   String _totalBayar = "-";
+
+  int _imageVersion = DateTime.now().millisecondsSinceEpoch;
 
   @override
   void initState() {
@@ -38,7 +39,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _fetchUserDataAndStats();
   }
 
-  // Fungsi untuk menarik data user & menghitung statistik pesanan 'Selesai'
+  String _getValidImageUrl(String path) {
+    if (path.startsWith('http')) return '$path?v=$_imageVersion';
+    String baseUrl = ApiConfig.baseUrl.replaceAll('/api', '');
+    String safePath = path.startsWith('/') ? path : '/$path';
+    if (!safePath.startsWith('/storage')) {
+      safePath = '/storage$safePath';
+    }
+    return '$baseUrl$safePath?v=$_imageVersion'; 
+  }
+
   Future<void> _fetchUserDataAndStats() async {
     setState(() => _isLoading = true);
     
@@ -51,22 +61,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return;
       }
 
-      // MENGGUNAKAN API CONFIG (CLEAN CODE)
-      final String apiUser = '${ApiConfig.baseUrl}/user/$idUser';
-      final String apiOrder = '${ApiConfig.baseUrl}/order-history?user_id=$idUser';
+      final resUser = await ApiService.get('/user/$idUser');
+      final resOrder = await ApiService.get('/order-history?user_id=$idUser');
 
-      // Eksekusi dua API sekaligus agar lebih cepat
-      final responses = await Future.wait([
-        http.get(Uri.parse(apiUser), headers: {'Accept': 'application/json'}),
-        http.get(Uri.parse(apiOrder), headers: {'Accept': 'application/json'})
-      ]);
-
-      final resUser = responses[0];
-      final resOrder = responses[1];
+      if (resUser == null || resOrder == null) {
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
 
       if (mounted) {
         setState(() {
-          // ── A. PROSES DATA PROFIL ──
+          _imageVersion = DateTime.now().millisecondsSinceEpoch;
+
           if (resUser.statusCode == 200) {
             final dataUser = jsonDecode(resUser.body);
             if (dataUser['success'] == true && dataUser['data'] != null) {
@@ -78,6 +84,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               
               if (uData['foto_profil'] != null && uData['foto_profil'].toString().isNotEmpty) {
                 _fotoProfil = uData['foto_profil'].toString();
+              } else {
+                _fotoProfil = null; 
               }
 
               String rawRating = uData['rating']?.toString() ?? "-";
@@ -85,7 +93,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             }
           }
 
-          // ── B. PROSES DATA STATISTIK PESANAN (HANYA YANG 'SELESAI') ──
           int countSelesai = 0;
           double sumBayar = 0;
 
@@ -93,13 +100,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             final dataOrder = jsonDecode(resOrder.body);
             if (dataOrder['success'] == true && dataOrder['data'] != null) {
               List<dynamic> allOrders = dataOrder['data'];
-              
-              // Looping dan cek satu per satu
               for (var order in allOrders) {
                 if (order['status'] == 'Selesai') {
-                  countSelesai++; // Hitung jumlah pesanan selesai
-                  
-                  // Hitung total uang
+                  countSelesai++; 
                   String hargaString = order['total_harga']?.toString() ?? '0';
                   double harga = double.tryParse(hargaString) ?? 0;
                   sumBayar += harga;
@@ -108,14 +111,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
             }
           }
 
-          // ── C. FORMAT TAMPILAN ANGKA STATISTIK ──
           if (countSelesai == 0) {
             _totalPesanan = "-";
             _totalBayar = "-";
           } else {
             _totalPesanan = countSelesai.toString();
-            
-            // Penyingkat angka cerdas untuk Total Bayar (Misal: 250000 jadi 250K)
             if (sumBayar >= 1000000) {
               _totalBayar = '${(sumBayar / 1000000).toStringAsFixed(1).replaceAll('.0', '')}M';
             } else if (sumBayar >= 1000) {
@@ -127,34 +127,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
         });
       }
     } catch (e) {
-      debugPrint("Gagal memuat profil & statistik: $e");
+      debugPrint("Gagal memuat profil: $e");
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // ── Fungsi Warna & Ikon Dinamis untuk Member ──
+  // ── PENGATURAN WARNA BACKGROUND BADGE ──
   Color _getBadgeBgColor() {
     String m = _member.toLowerCase();
-    if (m == 'gold') return const Color(0xFFFFD700); 
-    if (m == 'diamond') return const Color(0xFF00E5FF); 
-    return const Color(0xFFE0E0E0); 
+    if (m == 'gold') return const Color(0xFFFFF8E1); 
+    if (m == 'diamond') return const Color(0xFFE0F7FA); 
+    return const Color(0xFFF1F5F9); 
   }
 
+  // ── PENGATURAN WARNA TEKS BADGE ──
   Color _getBadgeTextColor() {
     String m = _member.toLowerCase();
-    if (m == 'gold') return const Color(0xFF5D4037); 
-    if (m == 'diamond') return const Color(0xFF006064); 
-    return const Color(0xFF424242); 
+    if (m == 'gold') return const Color(0xFFF57F17); 
+    if (m == 'diamond') return const Color(0xFF00838F); 
+    return const Color(0xFF334155); 
   }
 
-  String _getBadgeIcon() {
+  // ── PENGATURAN IKON BADGE ──
+  Widget _getBadgeIconWidget(Color iconColor) {
     String m = _member.toLowerCase();
-    if (m == 'gold') return '🌟';
-    if (m == 'diamond') return '💎';
-    return '⭐'; 
+    if (m == 'gold') return const Text('👑', style: TextStyle(fontSize: 14));
+    if (m == 'diamond') return const Text('✨', style: TextStyle(fontSize: 14));
+    
+    return Icon(Icons.diamond_outlined, size: 16, color: iconColor); 
   }
 
   @override
@@ -172,12 +173,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
             children: [
-              // ── STATS CARD DINAMIS ─────────────────────────────────────────
               _buildStatsCard(),
-
               const SizedBox(height: 20),
-
-              // ── MENU SECTIONS ────────────────────────────────────────────
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Column(
@@ -214,17 +211,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         iconBg: const Color(0xFFE8F5E9),
                         label: 'Email',
                         value: _isLoading ? '...' : _email,
+                        isLast: true, 
                         onTap: () async {
                           final result = await Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileEmailScreen(currentEmail: _email)));
                           if (result == true) _fetchUserDataAndStats();
                         },
-                      ),
-                      const _MenuItem(
-                        icon: Icons.discount_outlined,
-                        iconColor: Color(0xFF3B5BDB),
-                        iconBg: Color(0xFFE8F0FE),
-                        label: 'Voucher saya',
-                        isLast: true,
                       ),
                     ]),
 
@@ -250,24 +241,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     _buildSectionTitle('Lainnya'),
                     const SizedBox(height: 8),
                     _buildMenuCard(items: [
-                      _MenuItem(
-                        icon: Icons.help_outline_rounded,
-                        iconColor: const Color(0xFF3B5BDB),
-                        iconBg: const Color(0xFFE8F0FE),
-                        label: 'Bantuan & FAQ',
-                        onTap: () {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileFaqScreen()));
-                        },
-                      ),
-                      _MenuItem(
-                        icon: Icons.description_outlined,
-                        iconColor: const Color(0xFFE53935),
-                        iconBg: const Color(0xFFFFEBEE),
-                        label: 'Syarat & Ketentuan',
-                        onTap: () {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileSkScreen()));
-                        },
-                      ),
+                      // MENU FAQ DAN SK DIHAPUS, HANYA TERSISA LOGOUT
                       _MenuItem(
                         icon: Icons.logout_rounded,
                         iconColor: const Color(0xFFE53935),
@@ -290,14 +264,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ── Header Premium ─────────────────────────────────────────────────────────
   Widget _buildHeader() {
     Color bgBadge = _getBadgeBgColor();
     Color textBadge = _getBadgeTextColor();
-    String iconBadge = _getBadgeIcon();
 
-    // Otomatis menyesuaikan URL gambar dari ApiConfig (Membersihkan path '/api' jadi '/storage')
-    String storageUrl = ApiConfig.baseUrl.replaceAll('/api', '/storage');
+    String initial = _username.isNotEmpty && _username != "Memuat..." 
+        ? _username[0].toUpperCase() 
+        : "?";
 
     return Container(
       width: double.infinity,
@@ -320,44 +293,75 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ? const Center(child: CircularProgressIndicator(color: Colors.white))
             : Column(
               children: [
-                // Avatar Premium dengan efek Glow
-                Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF81D4FA), Color(0xFFE3F2FD)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
-                        blurRadius: 15,
-                        offset: const Offset(0, 8),
+                GestureDetector(
+                  onTap: () async {
+                    final result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => ProfileFotoScreen(
+                        currentFotoUrl: _fotoProfil,
+                        username: _username,
+                      )),
+                    );
+                    if (result == true) {
+                      _fetchUserDataAndStats(); 
+                    }
+                  },
+                  child: Stack(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF81D4FA), Color(0xFFE3F2FD)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 15,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: Container(
+                          width: 80,
+                          height: 80,
+                          decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
+                          child: ClipRRect( 
+                            borderRadius: BorderRadius.circular(40),
+                            child: _fotoProfil != null
+                              ? Image.network(
+                                  _getValidImageUrl(_fotoProfil!), 
+                                  fit: BoxFit.cover, width: 80, height: 80,
+                                  errorBuilder: (context, error, stackTrace) => _buildInitials(initial),
+                                )
+                              : _buildInitials(initial), 
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        bottom: 0,
+                        right: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF59F00), 
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                            boxShadow: [
+                              BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 4, offset: const Offset(0, 2))
+                            ]
+                          ),
+                          child: const Icon(Icons.edit_rounded, color: Colors.white, size: 14),
+                        ),
                       ),
                     ],
-                  ),
-                  child: Container(
-                    width: 80,
-                    height: 80,
-                    decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
-                    child: ClipOval(
-                      child: _fotoProfil != null
-                        ? Image.network(
-                            '$storageUrl/$_fotoProfil', // <-- URL DINAMIS MENGGUNAKAN APICONFIG
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return const Icon(Icons.person_rounded, size: 52, color: Color(0xFF1A237E));
-                            },
-                          )
-                        : const Icon(Icons.person_rounded, size: 52, color: Color(0xFF1A237E)),
-                    ),
                   ),
                 ),
                 const SizedBox(height: 14),
 
-                // Nama Dinamis
                 Text(
                   _username,
                   style: TextStyle(
@@ -372,7 +376,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 const SizedBox(height: 12),
 
-                // Contact Chips (Glassmorphism)
                 Column(
                   children: [
                     _buildContactChip(Icons.phone_rounded, _phone),
@@ -382,32 +385,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Badge Member Dinamis dengan Latar Solid
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                   decoration: BoxDecoration(
                     color: bgBadge,
                     borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: bgBadge.withOpacity(0.4),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
+                    border: Border.all(color: const Color(0xFFE2E8F0), width: 1), 
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(iconBadge, style: const TextStyle(fontSize: 14)),
-                      const SizedBox(width: 8),
+                      _getBadgeIconWidget(textBadge), 
+                      const SizedBox(width: 6),
                       Text(
-                        'Member $_member',
+                        _member.toUpperCase(),
                         style: TextStyle(
                           color: textBadge,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.3,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900, 
+                          letterSpacing: 0.5,
                         ),
                       ),
                     ],
@@ -415,6 +411,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ],
             ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInitials(String initial) {
+    return Container(
+      color: const Color(0xFF1A237E), 
+      child: Center(
+        child: Text(
+          initial,
+          style: const TextStyle(fontSize: 34, fontWeight: FontWeight.bold, color: Colors.white),
         ),
       ),
     );
@@ -439,7 +447,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ── Stats card DINAMIS (Berdasarkan Pesanan 'Selesai') ───────────────
   Widget _buildStatsCard() {
     String ratingDisplay = _rating == "-" ? "-" : "$_rating ⭐";
 
@@ -459,55 +466,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           child: Row(
             children: [
-              _buildStatItem(
-                  _isLoading ? '...' : _totalPesanan, 
-                  'Total Pesanan',
-                  const Color(0xFF1A1A2E), 
-                  false
-              ),
+              _buildStatItem(_isLoading ? '...' : _totalPesanan, 'Total Pesanan', const Color(0xFF1A1A2E)),
               _buildStatDivider(),
-              _buildStatItem(
-                  _isLoading ? '...' : ratingDisplay, 
-                  'Rating',
-                  const Color(0xFFF59F00), 
-                  false
-              ),
+              _buildStatItem(_isLoading ? '...' : ratingDisplay, 'Rating', const Color(0xFFF59F00)),
               _buildStatDivider(),
-              _buildStatItem(
-                  _isLoading ? '...' : _totalBayar, 
-                  'Total Bayar',
-                  const Color(0xFF3B5BDB), 
-                  true
-              ),
+              _buildStatItem(_isLoading ? '...' : _totalBayar, 'Total Bayar', const Color(0xFF3B5BDB)),
             ],
           ),
       ),
     );
   }
 
-  Widget _buildStatItem(String value, String label, Color valueColor, bool isBlue) {
+  Widget _buildStatItem(String value, String label, Color valueColor) {
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 18),
         child: Column(
           children: [
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: valueColor,
-              ),
-            ),
+            Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: valueColor)),
             const SizedBox(height: 4),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Color(0xFF94A3B8),
-              ),
-              textAlign: TextAlign.center,
-            ),
+            Text(label, style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)), textAlign: TextAlign.center),
           ],
         ),
       ),
@@ -515,43 +493,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildStatDivider() {
-    return Container(
-      width: 1,
-      height: 44,
-      color: const Color(0xFFF1F5F9),
-    );
+    return Container(width: 1, height: 44, color: const Color(0xFFF1F5F9));
   }
 
-  // ── Section title ─────────────────────────────────────────────────────────
   Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: const TextStyle(
-        fontSize: 15,
-        fontWeight: FontWeight.bold,
-        color: Color(0xFF1A1A2E),
-      ),
-    );
+    return Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E)));
   }
 
-  // ── Menu card ─────────────────────────────────────────────────────────────
   Widget _buildMenuCard({required List<_MenuItem> items}) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0xFFE9ECEF), width: 0.8),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 2))],
       ),
-      child: Column(
-        children: items.map((item) => _buildMenuItem(item)).toList(),
-      ),
+      child: Column(children: items.map((item) => _buildMenuItem(item)).toList()),
     );
   }
 
@@ -566,12 +523,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Row(
               children: [
                 Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: item.iconBg,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
+                  width: 36, height: 36,
+                  decoration: BoxDecoration(color: item.iconBg, borderRadius: BorderRadius.circular(10)),
                   child: Icon(item.icon, color: item.iconColor, size: 18),
                 ),
                 const SizedBox(width: 14),
@@ -579,67 +532,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Text(
                     item.label,
                     style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: item.isDestructive
-                          ? const Color(0xFFE53935)
-                          : const Color(0xFF1A1A2E),
+                      fontSize: 14, fontWeight: FontWeight.w500,
+                      color: item.isDestructive ? const Color(0xFFE53935) : const Color(0xFF1A1A2E),
                     ),
                   ),
                 ),
                 if (item.value != null) ...[
-                  Text(
-                    item.value!,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: Color(0xFF94A3B8),
-                    ),
-                  ),
+                  Text(item.value!, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Color(0xFF94A3B8))),
                   const SizedBox(width: 8),
                 ],
                 Icon(
-                  Icons.chevron_right_rounded,
-                  size: 20,
-                  color: item.isDestructive
-                      ? const Color(0xFFE53935)
-                      : const Color(0xFFCBD5E1),
+                  Icons.chevron_right_rounded, size: 20,
+                  color: item.isDestructive ? const Color(0xFFE53935) : const Color(0xFFCBD5E1),
                 ),
               ],
             ),
           ),
-          if (!item.isLast)
-            const Divider(height: 1, indent: 66, endIndent: 16, color: Color(0xFFF1F5F9)),
+          if (!item.isLast) const Divider(height: 1, indent: 66, endIndent: 16, color: Color(0xFFF1F5F9)),
         ],
       ),
     );
   }
 
-  // ── Logout dialog ─────────────────────────────────────────────────────────
   void _showLogoutDialog(BuildContext context) {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'Keluar dari Akun?',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E)),
-        ),
-        content: const Text(
-          'Kamu akan keluar dari akun SteamGo. Yakin ingin melanjutkan?',
-          style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
-        ),
+        title: const Text('Keluar dari Akun?', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1A1A2E))),
+        content: const Text('Kamu akan keluar dari akun SteamGo. Yakin ingin melanjutkan?', style: TextStyle(fontSize: 13, color: Color(0xFF64748B))),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Batal', style: TextStyle(color: Color(0xFF64748B))),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Batal', style: TextStyle(color: Color(0xFF64748B)))),
           TextButton(
             onPressed: () async {
-              Navigator.pop(context);
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.clear();
-              // Arahkan ke halaman login jika diperlukan
+              Navigator.pop(context); 
+              showDialog(context: context, barrierDismissible: false, builder: (context) => const Center(child: CircularProgressIndicator()));
+              try {
+                await ApiService.post('/logout', {});
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.clear(); 
+              } catch (e) {
+                debugPrint("Error saat proses logout: $e");
+              }
+              if (context.mounted) {
+                Navigator.pop(context); 
+                Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const LoginScreen()), (route) => false);
+              }
             },
             child: const Text('Keluar', style: TextStyle(color: Color(0xFFE53935), fontWeight: FontWeight.bold)),
           ),
@@ -649,7 +587,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-// ── Data class ────────────────────────────────────────────────────────────────
 class _MenuItem {
   final IconData icon;
   final Color iconColor;
@@ -661,13 +598,7 @@ class _MenuItem {
   final VoidCallback? onTap;
 
   const _MenuItem({
-    required this.icon,
-    required this.iconColor,
-    required this.iconBg,
-    required this.label,
-    this.value,
-    this.isLast = false,
-    this.isDestructive = false,
-    this.onTap,
+    required this.icon, required this.iconColor, required this.iconBg, required this.label,
+    this.value, this.isLast = false, this.isDestructive = false, this.onTap,
   });
 }

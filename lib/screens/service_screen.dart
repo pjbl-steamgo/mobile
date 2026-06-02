@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+
+import '../config/api_service.dart'; // ── IMPORT CLEAN CODE API ──
 import 'service_model.dart';
 import 'service_detail_screen.dart';
 
@@ -14,7 +15,7 @@ class ServiceScreen extends StatefulWidget {
 class _ServiceScreenState extends State<ServiceScreen> {
   bool _isLoading = true;
   List<ServiceModel> _services = [];
-  String _errorMessage = ''; // Menyimpan pesan error agar tampil di layar
+  String _errorMessage = ''; 
 
   @override
   void initState() {
@@ -22,7 +23,7 @@ class _ServiceScreenState extends State<ServiceScreen> {
     _fetchServices();
   }
 
-  // Menarik data layanan dari database Laravel
+  // ── CLEAN CODE: MENGAMBIL LAYANAN ──
   Future<void> _fetchServices() async {
     setState(() {
       _isLoading = true;
@@ -30,41 +31,45 @@ class _ServiceScreenState extends State<ServiceScreen> {
     });
 
     try {
-      // Ganti IP jika diperlukan
-      final response = await http.get(Uri.parse('http://192.168.100.36:8000/api/layanan'));
+      final response = await ApiService.get('/layanan');
       
-      if (response.statusCode == 200) {
-        final decoded = jsonDecode(response.body);
-        List<dynamic> rawData = [];
+      // Jika response == null, berarti ada error 401 dan ApiService sudah melempar user ke halaman Login
+      if (response != null && response.statusCode == 200) {
+        try {
+          final decoded = jsonDecode(response.body);
+          List<dynamic> rawData = [];
 
-        // Logika super-kebal untuk mengekstrak data dari berbagai format JSON Laravel
-        if (decoded is List) {
-          rawData = decoded; // Jika Laravel langsung mengirim Array [ {...}, {...} ]
-        } else if (decoded is Map) {
-          if (decoded.containsKey('data')) {
-            rawData = decoded['data']; // Jika Laravel mengirim { "data": [...] }
-          } else if (decoded.containsKey('layanan')) {
-            rawData = decoded['layanan']; 
-          } else {
-            // Jika formatnya meleset dari standar
-            _errorMessage = 'Format data dari server tidak dikenali.';
+          if (decoded is List) {
+            rawData = decoded; 
+          } else if (decoded is Map) {
+            if (decoded.containsKey('data')) {
+              rawData = decoded['data']; 
+            } else if (decoded.containsKey('layanan')) {
+              rawData = decoded['layanan']; 
+            } else {
+              if (mounted) setState(() => _errorMessage = 'Format data tidak dikenali.');
+              return;
+            }
           }
-        }
 
-        if (mounted && _errorMessage.isEmpty) {
-          setState(() {
-            _services = rawData.map((json) => ServiceModel.fromJson(json)).toList();
-          });
+          if (mounted) {
+            setState(() {
+              _services = rawData.map((json) => ServiceModel.fromJson(json)).toList();
+            });
+          }
+        } catch (e) {
+          if (mounted) setState(() => _errorMessage = 'Gagal memproses data dari server.');
         }
-      } else {
-        // Jika server error (404 Not Found, 500 Server Error, dll)
+      } 
+      // JIKA ERROR LAIN (Misal 500 Server Error)
+      else if (response != null) {
         if (mounted) {
-          setState(() => _errorMessage = 'Gagal memuat data (Error Code: ${response.statusCode})');
+          setState(() => _errorMessage = 'Gagal memuat data (Error: ${response.statusCode})');
         }
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _errorMessage = 'Tidak dapat terhubung ke server Laravel.\nPastikan IP dan API sudah benar.');
+        setState(() => _errorMessage = 'Gagal terhubung ke server.\nPastikan koneksi internet stabil.');
       }
       debugPrint('Error fetch API Layanan: $e');
     } finally {
@@ -82,8 +87,9 @@ class _ServiceScreenState extends State<ServiceScreen> {
         preferredSize: const Size.fromHeight(80),
         child: Container(
           decoration: const BoxDecoration(
+            // ── PERUBAHAN WARNA BACKGROUND APP BAR ──
             gradient: LinearGradient(
-              colors: [Color(0xFF3B5BDB), Color(0xFF4C6EF5)],
+              colors: [Color(0xFF1A237E), Color(0xFF3B5BDB)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -104,7 +110,8 @@ class _ServiceScreenState extends State<ServiceScreen> {
                       color: Colors.white.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: const Icon(Icons.local_car_wash_rounded, color: Colors.white, size: 22),
+                    // ── PERUBAHAN UI LOGO LAYANAN ──
+                    child: const Icon(Icons.grid_view_rounded, color: Colors.white, size: 22),
                   ),
                   const SizedBox(width: 14),
                   Column(
@@ -133,7 +140,6 @@ class _ServiceScreenState extends State<ServiceScreen> {
         child: _isLoading 
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF3B5BDB)))
           : _errorMessage.isNotEmpty 
-            // JIKA TERJADI ERROR, TAMPILKAN PESANNYA DI SINI
             ? ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: [

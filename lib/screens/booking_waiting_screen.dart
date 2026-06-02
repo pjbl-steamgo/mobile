@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
 
-// Import layar Confirmed buatanmu
+import '../config/api_service.dart'; // ── IMPORT CLEAN CODE API ──
 import 'booking_confirmed_screen.dart'; 
 
 class BookingWaitingScreen extends StatefulWidget {
@@ -49,7 +48,7 @@ class _BookingWaitingScreenState extends State<BookingWaitingScreen> {
     super.dispose();
   }
 
-  // --- FUNGSI PENGECEKAN STATUS KE SERVER (POLLING) ---
+  // --- FUNGSI PENGECEKAN STATUS KE SERVER (MENGGUNAKAN API SERVICE) ---
   void _startPolling() {
     _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       if (_isDisposed) {
@@ -58,30 +57,30 @@ class _BookingWaitingScreenState extends State<BookingWaitingScreen> {
       }
 
       try {
-        final response = await http.get(Uri.parse('http://192.168.100.36:8000/api/orders/status/${widget.orderId}'));
+        // ── PANGGILAN API CLEAN CODE ──
+        final response = await ApiService.get('/orders/status/${widget.orderId}');
         
-        if (response.statusCode == 200) {
+        if (response != null && response.statusCode == 200) {
           final data = jsonDecode(response.body);
           
           if (data['success'] == true) {
             String currentStatus = data['status'];
             
-            // JIKA ADMIN SUDAH MENGKONFIRMASI JADWAL (Status berubah jadi Belum Bayar)
+            // JIKA ADMIN SUDAH MENGKONFIRMASI JADWAL
             if (currentStatus == 'Belum Bayar') {
-              timer.cancel(); // Hentikan pencarian
+              timer.cancel(); 
               
               if (mounted) {
-                // PINDAH KE HALAMAN BOOKING CONFIRMED SCREEN (Bawa semua data)
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
                     builder: (_) => BookingConfirmedScreen(
-                      orderId: widget.orderId, // <-- INI TAMBAHAN PENTINGNYA
+                      orderId: widget.orderId,
                       serviceName: widget.serviceName,
                       date: widget.date,
                       vehicle: widget.vehicle,
                       plateNumber: widget.plateNumber,
-                      slot: '-', // Slot antrian belum ada di tahap ini
+                      slot: '-', 
                       price: widget.price,
                       bookingCode: widget.bookingCode,
                     ), 
@@ -89,14 +88,14 @@ class _BookingWaitingScreenState extends State<BookingWaitingScreen> {
                 );
               }
             }
-            // Jika pesanan ditolak/dihapus oleh sistem atau admin
+            // Jika pesanan ditolak/dihapus
             else if (currentStatus == 'Dihapus') {
               timer.cancel();
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text(data['message'] ?? 'Pesanan dibatalkan/ditolak.'))
                 );
-                Navigator.pop(context); // Kembali ke halaman Order Screen
+                Navigator.pop(context); 
               }
             }
           }
@@ -123,7 +122,7 @@ class _BookingWaitingScreenState extends State<BookingWaitingScreen> {
             icon: const Icon(Icons.arrow_back, color: Colors.black),
             onPressed: () {
               _pollingTimer?.cancel();
-              Navigator.pop(context); // Kembali ke Order Screen
+              Navigator.pop(context); 
             },
           ),
         ),

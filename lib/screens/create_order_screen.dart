@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
-// Pastikan import ini mengarah ke file Booking Waiting Screen kamu
+import '../config/api_service.dart'; // ── IMPORT CLEAN CODE API ──
 import 'booking_waiting_screen.dart'; 
 
 class CreateOrderScreen extends StatefulWidget {
@@ -16,41 +15,32 @@ class CreateOrderScreen extends StatefulWidget {
 }
 
 class _CreateOrderScreenState extends State<CreateOrderScreen> {
-  // --- STATE VARIABEL ---
   bool _isLoadingServices = true;
+  bool _isLoadingTimeSlots = true; 
   bool _isSubmitting = false; 
+  
   List<dynamic> _servicesList = []; 
+  List<dynamic> _timeSlots = []; 
 
-  // Pilihan User
   String _selectedCategory = 'Motor'; 
   Map<String, dynamic>? _selectedService;
   DateTime _selectedDate = DateTime.now();
   String? _selectedTime;
 
-  // Controller Input
   final TextEditingController _vehicleNameController = TextEditingController();
   final TextEditingController _plateNumberController = TextEditingController();
 
-  // Kategori Kendaraan Fix
   final List<Map<String, dynamic>> _categories = [
     {'nama': 'Motor', 'icon': Icons.two_wheeler_rounded, 'aktif': true},
     {'nama': 'Mobil', 'icon': Icons.directions_car_rounded, 'aktif': true},
-  ];
-
-  // Jam Operasional (Sampai 20:00)
-  final List<String> _timeSlots = [
-    '08:00 - 09:00', '09:00 - 10:00', '10:00 - 11:00',
-    '11:00 - 12:00', '13:00 - 14:00', '14:00 - 15:00',
-    '15:00 - 16:00', '16:00 - 17:00', '17:00 - 18:00',
-    '18:00 - 19:00', '19:00 - 20:00',
   ];
 
   @override
   void initState() {
     super.initState();
     _fetchServices();
+    _fetchJamOperasional(); 
     
-    // Agar ringkasan otomatis update saat mengetik nama kendaraan/plat
     _vehicleNameController.addListener(() => setState(() {}));
     _plateNumberController.addListener(() => setState(() {}));
   }
@@ -62,27 +52,55 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     super.dispose();
   }
 
-  // --- MENGAMBIL LAYANAN DARI API LARAVEL ---
+  // ── MENGAMBIL LAYANAN DENGAN API SERVICE ──
   Future<void> _fetchServices() async {
-    final String apiUrl = 'http://192.168.100.36:8000/api/services';
     try {
-      final response = await http.get(Uri.parse(apiUrl));
-      if (response.statusCode == 200) {
+      final response = await ApiService.get('/services');
+
+      if (response != null && response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (data['success']) {
-          setState(() {
-            _servicesList = data['data'];
-            _isLoadingServices = false;
-          });
+        if (data['success'] == true) {
+          if (mounted) {
+            setState(() {
+              _servicesList = data['data'];
+              _isLoadingServices = false;
+            });
+          }
         }
+      } else {
+        if (mounted) setState(() => _isLoadingServices = false);
       }
     } catch (e) {
       debugPrint("Gagal mengambil data layanan: $e");
-      setState(() => _isLoadingServices = false);
+      if (mounted) setState(() => _isLoadingServices = false);
     }
   }
 
-  // --- MENGIRIM PESANAN KE API LARAVEL ---
+  // ── MENGAMBIL JAM OPERASIONAL DENGAN API SERVICE ──
+  Future<void> _fetchJamOperasional() async {
+    try {
+      final response = await ApiService.get('/jam-operasional');
+
+      if (response != null && response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true) {
+          if (mounted) {
+            setState(() {
+              _timeSlots = data['data'];
+              _isLoadingTimeSlots = false;
+            });
+          }
+        }
+      } else {
+        if (mounted) setState(() => _isLoadingTimeSlots = false);
+      }
+    } catch (e) {
+      debugPrint("Gagal mengambil data jam operasional: $e");
+      if (mounted) setState(() => _isLoadingTimeSlots = false);
+    }
+  }
+
+  // ── MENGIRIM PESANAN DENGAN API SERVICE ──
   Future<void> _submitOrder() async {
     setState(() => _isSubmitting = true);
 
@@ -90,44 +108,27 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       final prefs = await SharedPreferences.getInstance();
       final userId = prefs.getString('id_user') ?? "";
 
-      if (userId.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sesi login habis, silakan login kembali.')));
-        setState(() => _isSubmitting = false);
-        return;
-      }
-
-      final String apiUrl = 'http://192.168.100.36:8000/api/orders';
-      
       String tanggalTampil = "${DateFormat('dd MMMM yyyy', 'id_ID').format(_selectedDate)}, $_selectedTime";
       String layananId = _selectedService?['_id'] ?? _selectedService?['id'] ?? "";
 
-      final response = await http.post(
-        Uri.parse(apiUrl),
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'user_id': userId,
-          'layanan_id': layananId,
-          'kendaraan': _vehicleNameController.text,
-          'plat_nomor': _plateNumberController.text,
-          'tanggal': tanggalTampil,
-          'total_harga': _selectedService?['harga'] ?? 0,
-        }),
-      );
+      Map<String, dynamic> bodyData = {
+        'user_id': userId,
+        'layanan_id': layananId,
+        'kendaraan': _vehicleNameController.text.trim(),
+        'plat_nomor': _plateNumberController.text.trim(),
+        'tanggal': tanggalTampil,
+        'total_harga': _selectedService?['harga'] ?? 0,
+      };
 
-      if (response.statusCode == 201 || response.statusCode == 200) {
+      final response = await ApiService.post('/orders', bodyData);
+
+      if (response != null && (response.statusCode == 201 || response.statusCode == 200)) {
         final responseData = jsonDecode(response.body);
         
-        // Tangkap ID yang dikembalikan oleh Laravel
         final String orderId = responseData['data']['_id'] ?? responseData['data']['id'];
-        
-        // Tangkap Kode Pesanan yang di-generate Laravel (contoh: STG-8A9B2C)
         final String bookingCode = responseData['data']['kode_pesanan'] ?? '-';
 
         if (mounted) {
-          // Ganti layar ke Waiting Screen, sambil membawa semua data yang dibutuhkan
           Navigator.pushReplacement(
             context, 
             MaterialPageRoute(
@@ -135,34 +136,35 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 orderId: orderId,
                 serviceName: "${_selectedService?['nama_layanan']} ($_selectedCategory)",
                 date: tanggalTampil,
-                vehicle: _vehicleNameController.text,
-                plateNumber: _plateNumberController.text,
+                vehicle: _vehicleNameController.text.trim(),
+                plateNumber: _plateNumberController.text.trim(),
                 price: "Rp ${_selectedService?['harga'] ?? 0}",
                 bookingCode: bookingCode,
               )
             )
           );
         }
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal membuat pesanan. Silakan coba lagi.')));
+      } else if (response != null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gagal membuat pesanan. Silakan coba lagi.')));
+        }
       }
     } catch (e) {
       debugPrint("Error submit: $e");
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Terjadi kesalahan koneksi jaringan.')));
-    } finally {
       if (mounted) {
-        setState(() => _isSubmitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Terjadi kesalahan koneksi jaringan.')));
       }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
-  // --- PEMILIH TANGGAL ---
   Future<void> _pickDate() async {
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
       firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 14)),
+      lastDate: DateTime.now().add(const Duration(days: 1)), 
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
@@ -204,7 +206,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             child: ListView(
               padding: const EdgeInsets.all(20),
               children: [
-                // 1. KATEGORI KENDARAAN
                 _buildSectionTitle('Kategori Kendaraan', Icons.category_rounded),
                 const SizedBox(height: 12),
                 Row(
@@ -250,7 +251,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // 2. PILIH LAYANAN
                 _buildSectionTitle('Pilih Layanan ($_selectedCategory)', Icons.local_car_wash_rounded),
                 const SizedBox(height: 12),
                 _isLoadingServices
@@ -324,7 +324,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                           ),
                 const SizedBox(height: 24),
 
-                // 3. DETAIL KENDARAAN
                 _buildSectionTitle('Detail Kendaraan', Icons.directions_car_rounded),
                 const SizedBox(height: 12),
                 TextFormField(
@@ -341,7 +340,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // 4. WAKTU KEDATANGAN
                 _buildSectionTitle('Waktu Kedatangan', Icons.calendar_month_rounded),
                 const SizedBox(height: 12),
                 GestureDetector(
@@ -359,45 +357,61 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: _timeSlots.map((time) {
-                    bool isSelected = _selectedTime == time;
-                    bool isPast = false;
-                    
-                    if (_selectedDate.day == DateTime.now().day && _selectedDate.month == DateTime.now().month && _selectedDate.year == DateTime.now().year) {
-                      int jamMulai = int.parse(time.split(':')[0]);
-                      if (jamMulai <= DateTime.now().hour) {
-                        isPast = true;
-                      }
-                    }
+                _isLoadingTimeSlots
+                    ? const Center(child: CircularProgressIndicator())
+                    : _timeSlots.isEmpty 
+                        ? const Text("Jadwal operasional belum tersedia.", style: TextStyle(color: Colors.grey))
+                        : Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: _timeSlots.map((slot) {
+                              String timeString = slot['jam'];
+                              bool isBackendActive = slot['is_active'] == true || slot['is_active'] == 1 || slot['is_active'].toString() == 'true'; 
+                              
+                              bool isSelected = _selectedTime == timeString;
+                              bool isPast = false;
+                              
+                              if (_selectedDate.day == DateTime.now().day && 
+                                  _selectedDate.month == DateTime.now().month && 
+                                  _selectedDate.year == DateTime.now().year) {
+                                int jamMulai = int.parse(timeString.split(':')[0]);
+                                if (jamMulai <= DateTime.now().hour) {
+                                  isPast = true;
+                                }
+                              }
 
-                    return GestureDetector(
-                      onTap: isPast ? null : () => setState(() => _selectedTime = time),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: isPast 
-                              ? Colors.grey.shade200 
-                              : (isSelected ? const Color(0xFF3B5BDB) : Colors.white),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: isPast ? Colors.transparent : (isSelected ? const Color(0xFF3B5BDB) : Colors.grey.shade300)),
-                        ),
-                        child: Text(
-                          time, 
-                          style: TextStyle(
-                            fontSize: 12, fontWeight: FontWeight.bold,
-                            color: isPast ? Colors.grey.shade400 : (isSelected ? Colors.white : const Color(0xFF1A1A2E)),
-                          )
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
+                              bool isDisabled = isPast || !isBackendActive;
+
+                              return GestureDetector(
+                                onTap: isDisabled ? null : () => setState(() => _selectedTime = timeString),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: isDisabled 
+                                        ? Colors.grey.shade300 
+                                        : (isSelected ? const Color(0xFF3B5BDB) : Colors.white),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: isDisabled 
+                                          ? Colors.transparent 
+                                          : (isSelected ? const Color(0xFF3B5BDB) : Colors.grey.shade300)
+                                    ),
+                                  ),
+                                  child: Text(
+                                    timeString, 
+                                    style: TextStyle(
+                                      fontSize: 12, fontWeight: FontWeight.bold,
+                                      color: isDisabled 
+                                          ? Colors.grey.shade500 
+                                          : (isSelected ? Colors.white : const Color(0xFF1A1A2E)),
+                                    )
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
                 const SizedBox(height: 32),
 
-                // 5. RINGKASAN & PEMBAYARAN
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
@@ -408,8 +422,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                       const Divider(height: 24),
                       _summaryRow('Layanan', _selectedService?['nama_layanan'] ?? '-'),
                       _summaryRow('Kategori', _selectedCategory), 
-                      _summaryRow('Kendaraan', _vehicleNameController.text.isEmpty ? '-' : _vehicleNameController.text),
-                      _summaryRow('Nomor Polisi', _plateNumberController.text.isEmpty ? '-' : _plateNumberController.text),
+                      _summaryRow('Kendaraan', _vehicleNameController.text.trim().isEmpty ? '-' : _vehicleNameController.text.trim()),
+                      _summaryRow('Nomor Polisi', _plateNumberController.text.trim().isEmpty ? '-' : _plateNumberController.text.trim()),
                       _summaryRow('Jadwal', _selectedTime == null ? '-' : "${DateFormat('dd/MM').format(_selectedDate)}, $_selectedTime"),
                       const Divider(height: 24),
                       Row(
@@ -420,7 +434,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                         ],
                       ),
                       const SizedBox(height: 16),
-                      // Keterangan Pembayaran
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         decoration: BoxDecoration(color: const Color(0xFFFFF3CD), borderRadius: BorderRadius.circular(8)),
@@ -444,7 +457,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             ),
           ),
           
-          // 6. TOMBOL SUBMIT
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -453,7 +465,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             ),
             child: SafeArea(
               child: ElevatedButton(
-                onPressed: (_selectedService == null || _vehicleNameController.text.isEmpty || _plateNumberController.text.isEmpty || _selectedTime == null || _isSubmitting)
+                onPressed: (_selectedService == null || _vehicleNameController.text.trim().isEmpty || _plateNumberController.text.trim().isEmpty || _selectedTime == null || _isSubmitting)
                     ? null
                     : _submitOrder, 
                 style: ElevatedButton.styleFrom(
@@ -473,7 +485,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     );
   }
 
-  // Helper Widget
   Widget _buildSectionTitle(String title, IconData icon) {
     return Row(
       children: [

@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 
-import '../config/api_config.dart'; // IMPORT CLEAN CODE
+import '../config/api_service.dart'; // ── IMPORT CLEAN CODE API ──
 
 class ProfileHpScreen extends StatefulWidget {
   final String currentHp;
@@ -31,15 +29,12 @@ class _ProfileHpScreenState extends State<ProfileHpScreen> {
       final prefs = await SharedPreferences.getInstance();
       final idUser = prefs.getString('id_user') ?? "";
 
-      final response = await http.put(
-        Uri.parse('${ApiConfig.baseUrl}/user/$idUser'), // CLEAN CODE
-        headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
-        body: jsonEncode({'no_hp': _controller.text.trim()}),
-      );
+      // ── PANGGILAN API PUT CLEAN CODE ──
+      final response = await ApiService.put('/user/$idUser', {'no_hp': _controller.text.trim()});
 
-      if (response.statusCode == 200) {
+      if (response != null && response.statusCode == 200) {
         if (mounted) Navigator.pop(context, true);
-      } else {
+      } else if (response != null) {
         _showError("Gagal memperbarui nomor telepon");
       }
     } catch (e) {

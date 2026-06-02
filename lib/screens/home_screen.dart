@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'dart:async'; 
-import 'package:http/http.dart' as http;
 
+import '../config/api_service.dart'; 
+import '../config/api_config.dart';  
 import 'chat_screen.dart';
 import 'order_screen.dart';
 import 'order_detail_screen.dart';
@@ -27,17 +28,17 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // Variabel Profil & Antrian
   String _username = "Memuat...";
   String _userId = "";
+  String? _fotoProfil; 
+  int _imageVersion = DateTime.now().millisecondsSinceEpoch; 
+
   bool _isLoadingOrder = true;
   List<dynamic> _activeOrders = []; 
 
-  // ── VARIABEL UNTUK JAM OPERASIONAL ──
   bool _isLoadingJam = true;
   List<dynamic> _jamOperasional = [];
 
-  // Variabel Auto-Slider
   late PageController _sliderController;
   int _currentSliderPage = 0;
   Timer? _sliderTimer;
@@ -46,13 +47,10 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadUserData();
-
-    // Inisialisasi API Jam Operasional
     _fetchJamOperasional();
 
-    // Inisialisasi Slider Otomatis
     _sliderController = PageController(initialPage: 0);
-    _sliderTimer = Timer.periodic(const Duration(seconds: 2), (Timer timer) {
+    _sliderTimer = Timer.periodic(const Duration(seconds: 3), (Timer timer) {
       if (_currentSliderPage < 2) {
         _currentSliderPage++;
       } else {
@@ -75,30 +73,64 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
+  String _getValidImageUrl(String path) {
+    if (path.startsWith('http')) return '$path?v=$_imageVersion';
+    String baseUrl = ApiConfig.baseUrl.replaceAll('/api', '');
+    String safePath = path.startsWith('/') ? path : '/$path';
+    if (!safePath.startsWith('/storage')) {
+      safePath = '/storage$safePath';
+    }
+    return '$baseUrl$safePath?v=$_imageVersion'; 
+  }
+
   Future<void> _loadUserData() async {
     final prefs = await SharedPreferences.getInstance();
     final idUser = prefs.getString('id_user') ?? "";
     final username = prefs.getString('username') ?? "Pelanggan";
 
-    setState(() {
-      _username = username;
-      _userId = idUser;
-    });
+    if (mounted) {
+      setState(() {
+        _username = username;
+        _userId = idUser;
+      });
+    }
 
     if (idUser.isNotEmpty) {
+      _fetchUserProfile(idUser); 
       _fetchActiveOrders(idUser);
     } else {
-      setState(() => _isLoadingOrder = false);
+      if (mounted) setState(() => _isLoadingOrder = false);
+    }
+  }
+
+  Future<void> _fetchUserProfile(String userId) async {
+    try {
+      final response = await ApiService.get('/user/$userId');
+      if (response != null && response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true && data['data'] != null) {
+          if (mounted) {
+            setState(() {
+              _username = data['data']['username'] ?? _username;
+              String? foto = data['data']['foto_profil'];
+              _fotoProfil = (foto != null && foto.isNotEmpty) ? foto : null;
+              _imageVersion = DateTime.now().millisecondsSinceEpoch;
+            });
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Gagal memuat profil user: $e");
     }
   }
 
   Future<void> _fetchActiveOrders(String userId) async {
-    final String apiUrl = 'http://192.168.100.36:8000/api/order-history?user_id=$userId';
-    setState(() => _isLoadingOrder = true);
+    if (mounted) setState(() => _isLoadingOrder = true);
 
     try {
-      final response = await http.get(Uri.parse(apiUrl), headers: {'Accept': 'application/json'});
-      if (response.statusCode == 200) {
+      final response = await ApiService.get('/order-history?user_id=$userId');
+
+      if (response != null && response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
         if (responseData['success'] == true) {
           List<dynamic> allOrders = responseData['data'];
@@ -127,16 +159,12 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  // ── FUNGSI FETCH API JAM OPERASIONAL ──
   Future<void> _fetchJamOperasional() async {
-    setState(() => _isLoadingJam = true);
+    if (mounted) setState(() => _isLoadingJam = true);
     try {
-      final response = await http.get(
-        Uri.parse('http://192.168.100.36:8000/api/jam-operasional'),
-        headers: {'Accept': 'application/json'}
-      );
+      final response = await ApiService.get('/jam-operasional');
 
-      if (response.statusCode == 200) {
+      if (response != null && response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
           if (mounted) {
@@ -190,23 +218,88 @@ class _HomeScreenState extends State<HomeScreen> {
     _fetchActiveOrders(_userId); 
   }
 
-  // Fungsi Refresh digabung
   Future<void> _handleRefresh() async {
+    await _fetchUserProfile(_userId); 
     await _fetchActiveOrders(_userId);
     await _fetchJamOperasional();
   }
 
+  void _showProfilePhotoDialog(String initial) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          backgroundColor: Colors.transparent, 
+          elevation: 0,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 250, 
+                height: 250,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white,
+                  border: Border.all(color: Colors.white, width: 4),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 10))
+                  ]
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(125), 
+                  child: _fotoProfil != null
+                    ? Image.network(
+                        _getValidImageUrl(_fotoProfil!),
+                        fit: BoxFit.cover, width: 250, height: 250,
+                        errorBuilder: (context, error, stackTrace) => _buildInitialsLarge(initial),
+                      )
+                    : _buildInitialsLarge(initial),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Container(
+                decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.black54),
+                child: IconButton(
+                  icon: const Icon(Icons.close_rounded, color: Colors.white, size: 30),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              )
+            ],
+          ),
+        );
+      }
+    );
+  }
+
+  Widget _buildInitialsLarge(String initial) {
+    return Container(
+      color: const Color(0xFF1A237E), 
+      child: Center(
+        child: Text(
+          initial,
+          style: const TextStyle(fontSize: 90, fontWeight: FontWeight.bold, color: Colors.white),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    String initial = _username.isNotEmpty && _username != "Memuat..." 
+        ? _username[0].toUpperCase() 
+        : "?";
+
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4FF),
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(80),
         child: Container(
           decoration: const BoxDecoration(
+            // ── PERUBAHAN 1: WARNA BACKGROUND APP BAR DISAMAKAN ──
             gradient: LinearGradient(
-              colors: [Color(0xFF3B5BDB), Color(0xFF4C6EF5)],
-              begin: Alignment.topLeft, end: Alignment.bottomRight,
+              colors: [Color(0xFF1A237E), Color(0xFF3B5BDB)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
             borderRadius: BorderRadius.only(bottomLeft: Radius.circular(28), bottomRight: Radius.circular(28)),
           ),
@@ -216,10 +309,23 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.fromLTRB(20, 10, 20, 14),
               child: Row(
                 children: [
-                  Container(
-                    width: 42, height: 42,
-                    decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.25), border: Border.all(color: Colors.white, width: 2)),
-                    child: const Icon(Icons.person_rounded, color: Colors.white, size: 22),
+                  // ── PERUBAHAN 2: FOTO PROFIL (HANYA GET / MUNCULKAN POP UP) ──
+                  GestureDetector(
+                    onTap: () => _showProfilePhotoDialog(initial),
+                    child: Container(
+                      width: 44, height: 44,
+                      decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withOpacity(0.25), border: Border.all(color: Colors.white, width: 2)),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(22),
+                        child: _fotoProfil != null
+                          ? Image.network(
+                              _getValidImageUrl(_fotoProfil!),
+                              fit: BoxFit.cover, width: 44, height: 44,
+                              errorBuilder: (context, error, stackTrace) => Center(child: Text(initial, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 18))),
+                            )
+                          : Center(child: Text(initial, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 18))),
+                      ),
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -233,13 +339,23 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                   ),
+                  // ── PERUBAHAN 3: UI LOGO CHAT BARU ──
                   GestureDetector(
                     onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatScreen())),
-                    child: Container(
-                      width: 40, height: 40,
-                      margin: const EdgeInsets.only(right: 8),
-                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.18), shape: BoxShape.circle),
-                      child: const Icon(Icons.chat_bubble_outline_rounded, color: Colors.white, size: 20),
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          width: 44, height: 44,
+                          margin: const EdgeInsets.only(right: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.18),
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
+                          ),
+                          child: const Icon(Icons.mark_chat_unread_rounded, color: Colors.white, size: 22),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -318,42 +434,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [Color(0xFFF9A825), Color(0xFFFB8C00)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('Snow Wash Gratis\nUntuk Member Baru!', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold, height: 1.3)),
-                            const SizedBox(height: 6),
-                            Text('Berlaku s/d 28 Feb 2026', style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 11)),
-                            const SizedBox(height: 12),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-                              child: const Text('Klaim Sekarang', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFFE65100))),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Text('🎁', style: TextStyle(fontSize: 48)),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // ── BAGIAN JAM OPERASIONAL DINAMIS ──
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -370,11 +450,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       )
                     else
                       ..._jamOperasional.map((jamData) {
-                        // Mengamankan parsing data JSON dari MongoDB
                         String waktu = jamData['jam']?.toString() ?? '-';
                         bool isActive = false;
                         
-                        // Menangani tipe boolean asli atau angka (1/0) dari API
                         if (jamData['is_active'] != null) {
                           if (jamData['is_active'] is bool) {
                             isActive = jamData['is_active'];
@@ -397,11 +475,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ══════════════════════════════════════════════════════════
-  // WIDGET CARD JAM OPERASIONAL DINAMIS
-  // ══════════════════════════════════════════════════════════
   Widget _buildOperasionalCard(String waktu, bool isActive) {
-    // Pengaturan Warna berdasarkan Status Aktif/Tutup
     final Color bgColor = isActive ? Colors.white : const Color(0xFFF8F9FA);
     final Color timeColor = isActive ? const Color(0xFF1A1A2E) : const Color(0xFF94A3B8);
     final Color statusColor = isActive ? const Color(0xFF4CAF50) : const Color(0xFFE53935);
@@ -446,9 +520,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ══════════════════════════════════════════════════════════
-  // KUMPULAN WIDGET HELPER LAINNYA (Sama dengan sebelumnya)
-  // ══════════════════════════════════════════════════════════
   Widget _buildDynamicQueueSection() {
     if (_isLoadingOrder) {
       return Container(
@@ -610,9 +681,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildBadge(String status) {
-    if (status == 'Belum Dikonfirmasi') return _badge('Tunggu Admin', const Color(0xFFFFF3CD), const Color(0xFFB78103));
+    if (status == 'Belum Dikonfirmasi') return _badge('Menunggu Dikonfirmasi', const Color(0xFFFFF3CD), const Color(0xFFB78103));
     if (status == 'Belum Bayar') return _badge('Belum Bayar', const Color(0xFFFFE0B2), const Color(0xFFE65100));
-    if (status == 'Sedang Diverifikasi') return _badge('Verifikasi', const Color(0xFFE0E7FF), const Color(0xFF3B5BDB));
+    if (status == 'Sedang Diverifikasi') return _badge('Sedang diverifikasi', const Color(0xFFE0E7FF), const Color(0xFF3B5BDB));
     if (status == 'Antri' || status == 'Proses') return _badge(status, const Color(0xFFE8F0FE), const Color(0xFF3B5BDB));
     return _badge(status, const Color(0xFFF1F5F9), const Color(0xFF64748B));
   }
