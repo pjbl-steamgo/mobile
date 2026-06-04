@@ -4,11 +4,18 @@ import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../config/api_service.dart'; // ── IMPORT CLEAN CODE API ──
-import 'booking_waiting_screen.dart'; 
+import '../config/api_service.dart';
+import 'booking_waiting_screen.dart';
 
 class CreateOrderScreen extends StatefulWidget {
-  const CreateOrderScreen({super.key});
+  final String? preselectedServiceId;
+  final String? preselectedCategory;
+
+  const CreateOrderScreen({
+    super.key,
+    this.preselectedServiceId,
+    this.preselectedCategory,
+  });
 
   @override
   State<CreateOrderScreen> createState() => _CreateOrderScreenState();
@@ -16,13 +23,13 @@ class CreateOrderScreen extends StatefulWidget {
 
 class _CreateOrderScreenState extends State<CreateOrderScreen> {
   bool _isLoadingServices = true;
-  bool _isLoadingTimeSlots = true; 
-  bool _isSubmitting = false; 
-  
-  List<dynamic> _servicesList = []; 
-  List<dynamic> _timeSlots = []; 
+  bool _isLoadingTimeSlots = true;
+  bool _isSubmitting = false;
 
-  String _selectedCategory = 'Motor'; 
+  List<dynamic> _servicesList = [];
+  List<dynamic> _timeSlots = [];
+
+  String _selectedCategory = 'Motor';
   Map<String, dynamic>? _selectedService;
   DateTime _selectedDate = DateTime.now();
   String? _selectedTime;
@@ -38,9 +45,15 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   @override
   void initState() {
     super.initState();
-    _fetchServices();
-    _fetchJamOperasional(); 
     
+    // Set kategori jika dilempar dari layar sebelumnya
+    if (widget.preselectedCategory != null) {
+      _selectedCategory = widget.preselectedCategory!;
+    }
+
+    _fetchServices();
+    _fetchJamOperasional();
+
     _vehicleNameController.addListener(() => setState(() {}));
     _plateNumberController.addListener(() => setState(() {}));
   }
@@ -55,17 +68,25 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   // ── MENGAMBIL LAYANAN DENGAN API SERVICE ──
   Future<void> _fetchServices() async {
     try {
-      final response = await ApiService.get('/services');
+      final response = await ApiService.get('/layanan'); // Sesuaikan dengan route API Anda yang benar
 
       if (response != null && response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (data['success'] == true) {
-          if (mounted) {
-            setState(() {
-              _servicesList = data['data'];
-              _isLoadingServices = false;
-            });
-          }
+        List<dynamic> rawData = [];
+
+        // Penyesuaian format respon (array langsung atau dari 'data')
+        if (data is List) {
+          rawData = data;
+        } else if (data is Map && data.containsKey('data')) {
+          rawData = data['data'];
+        }
+
+        if (mounted) {
+          setState(() {
+            _servicesList = rawData;
+            _isLoadingServices = false;
+            _autoSelectService(); // Panggil fungsi auto-select
+          });
         }
       } else {
         if (mounted) setState(() => _isLoadingServices = false);
@@ -76,6 +97,27 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     }
   }
 
+  // ── Fungsi untuk otomatis memilih layanan ──
+  void _autoSelectService() {
+    if (widget.preselectedServiceId != null && _servicesList.isNotEmpty) {
+      try {
+        final found = _servicesList.firstWhere((service) {
+          String sId = service['_id']?.toString() ?? service['id']?.toString() ?? '';
+          return sId == widget.preselectedServiceId;
+        });
+        setState(() {
+          _selectedService = found;
+          // Set kategori sesuai kategori layanan yang ditemukan (berjaga-jaga)
+          if (found['kategori'] != null) {
+            _selectedCategory = found['kategori'];
+          }
+        });
+      } catch (e) {
+        debugPrint("Layanan dengan ID ${widget.preselectedServiceId} tidak ditemukan.");
+      }
+    }
+  }
+
   // ── MENGAMBIL JAM OPERASIONAL DENGAN API SERVICE ──
   Future<void> _fetchJamOperasional() async {
     try {
@@ -83,13 +125,19 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
 
       if (response != null && response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (data['success'] == true) {
-          if (mounted) {
-            setState(() {
-              _timeSlots = data['data'];
-              _isLoadingTimeSlots = false;
-            });
-          }
+        List<dynamic> timeData = [];
+
+        if (data is List) {
+           timeData = data;
+        } else if (data is Map && data.containsKey('data')) {
+           timeData = data['data'];
+        }
+
+        if (mounted) {
+          setState(() {
+            _timeSlots = timeData;
+            _isLoadingTimeSlots = false;
+          });
         }
       } else {
         if (mounted) setState(() => _isLoadingTimeSlots = false);
@@ -120,17 +168,17 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         'total_harga': _selectedService?['harga'] ?? 0,
       };
 
-      final response = await ApiService.post('/orders', bodyData);
+      final response = await ApiService.post('/pesanan', bodyData); // Sesuaikan dengan Endpoint Anda (biasanya /pesanan)
 
       if (response != null && (response.statusCode == 201 || response.statusCode == 200)) {
         final responseData = jsonDecode(response.body);
-        
+
         final String orderId = responseData['data']['_id'] ?? responseData['data']['id'];
         final String bookingCode = responseData['data']['kode_pesanan'] ?? '-';
 
         if (mounted) {
           Navigator.pushReplacement(
-            context, 
+            context,
             MaterialPageRoute(
               builder: (_) => BookingWaitingScreen(
                 orderId: orderId,
@@ -140,8 +188,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 plateNumber: _plateNumberController.text.trim(),
                 price: "Rp ${_selectedService?['harga'] ?? 0}",
                 bookingCode: bookingCode,
-              )
-            )
+              ),
+            ),
           );
         }
       } else if (response != null) {
@@ -164,7 +212,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
       context: context,
       initialDate: _selectedDate,
       firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 1)), 
+      lastDate: DateTime.now().add(const Duration(days: 1)),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
@@ -177,7 +225,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     if (picked != null) {
       setState(() {
         _selectedDate = picked;
-        _selectedTime = null; 
+        _selectedTime = null;
       });
     }
   }
@@ -185,7 +233,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
   @override
   Widget build(BuildContext context) {
     List<dynamic> displayedServices = _servicesList.where((service) {
-      return service['kategori'] == _selectedCategory;
+      return service['kategori']?.toString().toLowerCase() == _selectedCategory.toLowerCase();
     }).toList();
 
     return Scaffold(
@@ -210,24 +258,24 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 const SizedBox(height: 12),
                 Row(
                   children: _categories.map((cat) {
-                    bool isSelected = _selectedCategory == cat['nama'];
+                    bool isSelected = _selectedCategory.toLowerCase() == cat['nama'].toString().toLowerCase();
                     bool isActive = cat['aktif'];
                     return Expanded(
                       child: GestureDetector(
-                        onTap: isActive 
+                        onTap: isActive
                             ? () {
                                 setState(() {
                                   _selectedCategory = cat['nama'];
-                                  _selectedService = null; 
+                                  _selectedService = null;
                                 });
-                              } 
+                              }
                             : null,
                         child: Container(
                           margin: const EdgeInsets.only(right: 10),
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           decoration: BoxDecoration(
-                            color: isActive 
-                                ? (isSelected ? const Color(0xFF3B5BDB) : Colors.white) 
+                            color: isActive
+                                ? (isSelected ? const Color(0xFF3B5BDB) : Colors.white)
                                 : Colors.grey.shade300,
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(color: isSelected ? const Color(0xFF3B5BDB) : Colors.grey.shade300),
@@ -238,8 +286,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                               Icon(cat['icon'], color: isActive ? (isSelected ? Colors.white : const Color(0xFF3B5BDB)) : Colors.grey.shade500),
                               const SizedBox(height: 8),
                               Text(cat['nama'], style: TextStyle(
-                                fontSize: 13, 
-                                fontWeight: FontWeight.bold, 
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
                                 color: isActive ? (isSelected ? Colors.white : const Color(0xFF1A1A2E)) : Colors.grey.shade500,
                               )),
                             ],
@@ -261,26 +309,25 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                             spacing: 12,
                             runSpacing: 12,
                             children: displayedServices.map((service) {
-                              
-                              bool isSelected = _selectedService != null && 
+                              bool isSelected = _selectedService != null &&
                                   ((service['_id'] != null && _selectedService!['_id'] == service['_id']) ||
                                    (service['id'] != null && _selectedService!['id'] == service['id']));
-                              
-                              bool isActive = service['is_active'] ?? true;
+
+                              bool isActive = service['is_active'] == 1 || service['is_active'] == true || service['is_active'].toString() == 'true';
 
                               return GestureDetector(
                                 onTap: isActive ? () => setState(() => _selectedService = service) : null,
                                 child: Container(
-                                  width: (MediaQuery.of(context).size.width / 2) - 26, 
+                                  width: (MediaQuery.of(context).size.width / 2) - 26,
                                   padding: const EdgeInsets.all(12),
                                   decoration: BoxDecoration(
-                                    color: isActive 
+                                    color: isActive
                                         ? (isSelected ? const Color(0xFFE8F0FE) : Colors.white)
-                                        : Colors.grey.shade200, 
+                                        : Colors.grey.shade200,
                                     borderRadius: BorderRadius.circular(12),
                                     border: Border.all(
-                                      color: isActive 
-                                          ? (isSelected ? const Color(0xFF3B5BDB) : Colors.grey.shade300) 
+                                      color: isActive
+                                          ? (isSelected ? const Color(0xFF3B5BDB) : Colors.grey.shade300)
                                           : Colors.grey.shade300,
                                       width: isSelected ? 1.5 : 1.0,
                                     ),
@@ -293,11 +340,11 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                                         children: [
                                           Expanded(
                                             child: Text(
-                                              service['nama_layanan'] ?? 'Layanan', 
+                                              service['nama_layanan'] ?? 'Layanan',
                                               style: TextStyle(
-                                                fontWeight: FontWeight.bold, fontSize: 13, 
+                                                fontWeight: FontWeight.bold, fontSize: 13,
                                                 color: isActive ? const Color(0xFF1A1A2E) : Colors.grey.shade500
-                                              )
+                                              ),
                                             ),
                                           ),
                                           if (!isActive)
@@ -310,11 +357,11 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
-                                        'Rp ${service['harga'] ?? 0}', 
+                                        'Rp ${service['harga'] ?? 0}',
                                         style: TextStyle(
-                                          fontWeight: FontWeight.bold, fontSize: 12, 
+                                          fontWeight: FontWeight.bold, fontSize: 12,
                                           color: isActive ? const Color(0xFF3B5BDB) : Colors.grey.shade500
-                                        )
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -328,13 +375,13 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _vehicleNameController,
-                  textCapitalization: TextCapitalization.words, 
+                  textCapitalization: TextCapitalization.words,
                   decoration: _inputStyle('Merek & Tipe (cth: Honda Brio)'),
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _plateNumberController,
-                  textCapitalization: TextCapitalization.characters, 
+                  textCapitalization: TextCapitalization.characters,
                   inputFormatters: [LengthLimitingTextInputFormatter(11)],
                   decoration: _inputStyle('Nomor Polisi (cth: B 1234 XYZ)'),
                 ),
@@ -359,24 +406,28 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                 const SizedBox(height: 12),
                 _isLoadingTimeSlots
                     ? const Center(child: CircularProgressIndicator())
-                    : _timeSlots.isEmpty 
+                    : _timeSlots.isEmpty
                         ? const Text("Jadwal operasional belum tersedia.", style: TextStyle(color: Colors.grey))
                         : Wrap(
                             spacing: 10,
                             runSpacing: 10,
                             children: _timeSlots.map((slot) {
-                              String timeString = slot['jam'];
-                              bool isBackendActive = slot['is_active'] == true || slot['is_active'] == 1 || slot['is_active'].toString() == 'true'; 
-                              
+                              String timeString = slot['jam'] ?? '';
+                              bool isBackendActive = slot['is_active'] == true || slot['is_active'] == 1 || slot['is_active'].toString() == 'true';
+
                               bool isSelected = _selectedTime == timeString;
                               bool isPast = false;
-                              
-                              if (_selectedDate.day == DateTime.now().day && 
-                                  _selectedDate.month == DateTime.now().month && 
+
+                              if (_selectedDate.day == DateTime.now().day &&
+                                  _selectedDate.month == DateTime.now().month &&
                                   _selectedDate.year == DateTime.now().year) {
-                                int jamMulai = int.parse(timeString.split(':')[0]);
-                                if (jamMulai <= DateTime.now().hour) {
-                                  isPast = true;
+                                try {
+                                  int jamMulai = int.parse(timeString.split(':')[0]);
+                                  if (jamMulai <= DateTime.now().hour) {
+                                    isPast = true;
+                                  }
+                                } catch (e) {
+                                  debugPrint("Format jam error");
                                 }
                               }
 
@@ -387,24 +438,24 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                                   decoration: BoxDecoration(
-                                    color: isDisabled 
-                                        ? Colors.grey.shade300 
+                                    color: isDisabled
+                                        ? Colors.grey.shade300
                                         : (isSelected ? const Color(0xFF3B5BDB) : Colors.white),
                                     borderRadius: BorderRadius.circular(20),
                                     border: Border.all(
-                                      color: isDisabled 
-                                          ? Colors.transparent 
+                                      color: isDisabled
+                                          ? Colors.transparent
                                           : (isSelected ? const Color(0xFF3B5BDB) : Colors.grey.shade300)
                                     ),
                                   ),
                                   child: Text(
-                                    timeString, 
+                                    timeString,
                                     style: TextStyle(
                                       fontSize: 12, fontWeight: FontWeight.bold,
-                                      color: isDisabled 
-                                          ? Colors.grey.shade500 
+                                      color: isDisabled
+                                          ? Colors.grey.shade500
                                           : (isSelected ? Colors.white : const Color(0xFF1A1A2E)),
-                                    )
+                                    ),
                                   ),
                                 ),
                               );
@@ -421,7 +472,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                       const Text('Ringkasan Pesanan', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                       const Divider(height: 24),
                       _summaryRow('Layanan', _selectedService?['nama_layanan'] ?? '-'),
-                      _summaryRow('Kategori', _selectedCategory), 
+                      _summaryRow('Kategori', _selectedCategory),
                       _summaryRow('Kendaraan', _vehicleNameController.text.trim().isEmpty ? '-' : _vehicleNameController.text.trim()),
                       _summaryRow('Nomor Polisi', _plateNumberController.text.trim().isEmpty ? '-' : _plateNumberController.text.trim()),
                       _summaryRow('Jadwal', _selectedTime == null ? '-' : "${DateFormat('dd/MM').format(_selectedDate)}, $_selectedTime"),
@@ -443,7 +494,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                             SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                'Metode Pembayaran: QRIS (Tersedia setelah booking dikonfirmasi Admin)', 
+                                'Metode Pembayaran: QRIS (Tersedia setelah booking dikonfirmasi Admin)',
                                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF92400E)),
                               ),
                             ),
@@ -467,14 +518,14 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
               child: ElevatedButton(
                 onPressed: (_selectedService == null || _vehicleNameController.text.trim().isEmpty || _plateNumberController.text.trim().isEmpty || _selectedTime == null || _isSubmitting)
                     ? null
-                    : _submitOrder, 
+                    : _submitOrder,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF3B5BDB),
                   disabledBackgroundColor: Colors.grey.shade300,
                   minimumSize: const Size(double.infinity, 50),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                child: _isSubmitting 
+                child: _isSubmitting
                     ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                     : const Text('Konfirmasi & Buat Pesanan', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
               ),

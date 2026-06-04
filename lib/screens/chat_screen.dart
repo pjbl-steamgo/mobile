@@ -65,8 +65,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _idUser = prefs.getString('id_user') ?? "";
 
     if (_idUser.isNotEmpty) {
-      // Reset is_resolved dulu saat user membuka chat
-      await ApiService.post('/chat/$_idUser/reopen', {});
+      // PERBAIKAN: Baris await ApiService.post('/chat/$_idUser/reopen', {}); DIHAPUS
 
       await _fetchMessages();
 

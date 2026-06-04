@@ -414,9 +414,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           setState(() => _currentSliderPage = page);
                         },
                         children: [
-                          _buildImageBanner('assets/images/slider1.jpg'), 
-                          _buildImageBanner('assets/images/slider2.jpg'),
-                          _buildImageBanner('assets/images/slider3.jpg'),
+                          // ── BAGIAN YANG DIPERBARUI: MENAMBAHKAN GAMBAR LAYANAN ──
+                          _buildImageBanner('assets/images/steamwash.png'), // Gambar yang baru Anda tambahkan
+                          _buildImageBanner('assets/images/snowwash.png'),      // Anda juga bisa mengganti gambar slider lainnya
+                          _buildImageBanner('assets/images/detailing.png'),
                         ],
                       ),
                     ),

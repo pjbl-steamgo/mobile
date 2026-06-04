@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../config/api_service.dart'; // <--- Import ApiService yang sudah dibuat
 import 'register_screen.dart';
 import 'main_screen.dart';
 import 'login_reset_screen.dart';
@@ -174,19 +174,20 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
     });
 
     try {
-      const String apiUrl = 'http://192.168.100.36:8000/api/login';
+      // Menggunakan ApiService untuk hit API. Endpoint /login akan otomatis digabung 
+      // dengan baseUrl dari Ngrok dan menyertakan header bypass
+      final response = await ApiService.post('/login', {
+        'identifier': _identifierController.text.trim(),
+        'password': _passwordController.text,
+      });
 
-      final response = await http.post(
-        Uri.parse(apiUrl),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode({
-          'identifier': _identifierController.text.trim(),
-          'password': _passwordController.text,
-        }),
-      );
+      // Jika response null (misal karena token mati atau error html ngrok)
+      if (response == null) {
+        if (mounted) {
+          setState(() { _isLoading = false; });
+        }
+        return;
+      }
 
       final responseData = jsonDecode(response.body);
 
@@ -236,8 +237,8 @@ class _LoginFormWidgetState extends State<LoginFormWidget> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Gagal terhubung ke server. Pastikan server lokal berjalan.'),
+          SnackBar(
+            content: Text('Gagal terhubung ke server ($e).'),
             backgroundColor: Colors.redAccent,
             behavior: SnackBarBehavior.floating,
           ),

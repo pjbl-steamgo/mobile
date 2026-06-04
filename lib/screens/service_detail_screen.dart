@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'service_model.dart';
+import 'create_order_screen.dart'; // ── IMPORT DITAMBAHKAN ──
 
 class ServiceDetailScreen extends StatelessWidget {
   final ServiceModel service;
@@ -381,7 +382,7 @@ class ServiceDetailScreen extends StatelessWidget {
             height: 3,
             width: 32,
             decoration: BoxDecoration(
-              color: service.accentColor, // Ubah agar senada dengan warna layanan
+              color: service.accentColor,
               borderRadius: BorderRadius.circular(4),
             )),
         const SizedBox(height: 12),
@@ -474,14 +475,14 @@ class ServiceDetailScreen extends StatelessWidget {
           GestureDetector(
             onTap: () {
               Navigator.pop(context); // Tutup bottom sheet
-              // Di sini nanti bisa diarahkan ke CreateOrderScreen sambil melempar service.id
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Pesanan ${service.name} dipilih!'),
-                  backgroundColor: service.accentColor,
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
+              // ── PERBAIKAN: Arahkan ke CreateOrderScreen dan lempar parameternya ──
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => CreateOrderScreen(
+                    preselectedServiceId: service.id,
+                    preselectedCategory: service.category,
+                  ),
                 ),
               );
             },

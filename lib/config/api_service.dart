@@ -16,6 +16,7 @@ class ApiService {
     return {
       'Accept': 'application/json',
       'Content-Type': 'application/json',
+      'ngrok-skip-browser-warning': 'true', // <--- WAJIB: Bypass layar peringatan Ngrok
       if (token.isNotEmpty) 'Authorization': 'Bearer $token',
     };
   }
@@ -99,7 +100,10 @@ class ApiService {
       final token = prefs.getString('token') ?? '';
 
       var request = http.MultipartRequest('POST', Uri.parse('${ApiConfig.baseUrl}$endpoint'));
+      
+      // Setup header khusus untuk Multipart request
       request.headers['Accept'] = 'application/json';
+      request.headers['ngrok-skip-browser-warning'] = 'true'; // <--- WAJIB: Bypass layar peringatan Ngrok
       if (token.isNotEmpty) request.headers['Authorization'] = 'Bearer $token';
 
       // Masukkan field text

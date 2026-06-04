@@ -4,6 +4,7 @@ import 'dart:convert';
 import '../config/api_service.dart'; // ── IMPORT CLEAN CODE API ──
 import 'service_model.dart';
 import 'service_detail_screen.dart';
+import 'create_order_screen.dart'; // ── IMPORT DITAMBAHKAN ──
 
 class ServiceScreen extends StatefulWidget {
   const ServiceScreen({super.key});
@@ -258,9 +259,15 @@ class _ServiceScreenState extends State<ServiceScreen> {
                         const SizedBox(width: 12),
                         GestureDetector(
                           onTap: () {
+                            // ── PERBAIKAN: Arahkan ke CreateOrderScreen dan lempar parameternya ──
                             Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (_) => ServiceDetailScreen(service: service)),
+                              MaterialPageRoute(
+                                builder: (_) => CreateOrderScreen(
+                                  preselectedServiceId: service.id,
+                                  preselectedCategory: service.category,
+                                ),
+                              ),
                             );
                           },
                           child: Container(
